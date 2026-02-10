@@ -43,9 +43,9 @@ ENGINE = ReplicatedMergeTree(
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (source, level, timestamp, event_id)
 TTL
-    timestamp + INTERVAL 7  DAY TO VOLUME 'warm',
-    timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
-    timestamp + INTERVAL 90 DAY DELETE
+    toDateTime(timestamp) + INTERVAL 7  DAY TO VOLUME 'warm',
+    toDateTime(timestamp) + INTERVAL 30 DAY TO VOLUME 'cold',
+    toDateTime(timestamp) + INTERVAL 90 DAY DELETE
 SETTINGS
     index_granularity          = 8192,
     storage_policy             = 'clif_tiered',
@@ -93,9 +93,9 @@ ENGINE = ReplicatedMergeTree(
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (category, severity, timestamp, event_id)
 TTL
-    timestamp + INTERVAL 7  DAY TO VOLUME 'warm',
-    timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
-    timestamp + INTERVAL 180 DAY DELETE
+    toDateTime(timestamp) + INTERVAL 7  DAY TO VOLUME 'warm',
+    toDateTime(timestamp) + INTERVAL 30 DAY TO VOLUME 'cold',
+    toDateTime(timestamp) + INTERVAL 180 DAY DELETE
 SETTINGS
     index_granularity      = 8192,
     storage_policy         = 'clif_tiered',
@@ -144,9 +144,9 @@ ENGINE = ReplicatedMergeTree(
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (hostname, timestamp, pid, event_id)
 TTL
-    timestamp + INTERVAL 7  DAY TO VOLUME 'warm',
-    timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
-    timestamp + INTERVAL 90 DAY DELETE
+    toDateTime(timestamp) + INTERVAL 7  DAY TO VOLUME 'warm',
+    toDateTime(timestamp) + INTERVAL 30 DAY TO VOLUME 'cold',
+    toDateTime(timestamp) + INTERVAL 90 DAY DELETE
 SETTINGS
     index_granularity      = 8192,
     storage_policy         = 'clif_tiered',
@@ -199,9 +199,9 @@ ENGINE = ReplicatedMergeTree(
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (src_ip, dst_ip, timestamp, event_id)
 TTL
-    timestamp + INTERVAL 7  DAY TO VOLUME 'warm',
-    timestamp + INTERVAL 30 DAY TO VOLUME 'cold',
-    timestamp + INTERVAL 90 DAY DELETE
+    toDateTime(timestamp) + INTERVAL 7  DAY TO VOLUME 'warm',
+    toDateTime(timestamp) + INTERVAL 30 DAY TO VOLUME 'cold',
+    toDateTime(timestamp) + INTERVAL 90 DAY DELETE
 SETTINGS
     index_granularity      = 8192,
     storage_policy         = 'clif_tiered',

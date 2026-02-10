@@ -1,4 +1,4 @@
-<clickhouse-keeper>
+<clickhouse>
     <logger>
         <level>warning</level>
         <console>true</console>
@@ -26,4 +26,4 @@
             </server>
         </raft_configuration>
     </keeper_server>
-</clickhouse-keeper>
+</clickhouse>

@@ -5,14 +5,20 @@
             <default>
                 <keep_free_space_bytes>1073741824</keep_free_space_bytes>
             </default>
+            <!-- Separate local disk for warm tier -->
+            <warm_disk>
+                <path>/var/lib/clickhouse/warm/</path>
+                <keep_free_space_bytes>536870912</keep_free_space_bytes>
+            </warm_disk>
             <!-- S3-compatible cold storage (MinIO) -->
             <s3_cold>
                 <type>s3</type>
                 <endpoint>http://minio1:9000/clif-cold-logs/clickhouse/</endpoint>
-                <access_key_id>clif_minio_admin</access_key_id>
-                <secret_access_key>clif_minio_secret_change_me</secret_access_key>
+                <access_key_id from_env="MINIO_ROOT_USER"/>
+                <secret_access_key from_env="MINIO_ROOT_PASSWORD"/>
                 <use_environment_credentials>false</use_environment_credentials>
                 <metadata_path>/var/lib/clickhouse/disks/s3_cold/</metadata_path>
+                <skip_access_check>1</skip_access_check>
             </s3_cold>
         </disks>
 
@@ -24,7 +30,7 @@
                         <disk>default</disk>
                     </hot>
                     <warm>
-                        <disk>default</disk>
+                        <disk>warm_disk</disk>
                     </warm>
                     <cold>
                         <disk>s3_cold</disk>

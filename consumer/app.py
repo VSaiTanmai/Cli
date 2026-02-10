@@ -373,7 +373,10 @@ def main() -> None:
                 # No message — check if we need a time-based flush
                 if time.monotonic() - last_flush >= FLUSH_INTERVAL:
                     _flush_all(writer, buffers, stats)
-                    consumer.commit(asynchronous=False)
+                    try:
+                        consumer.commit(asynchronous=False)
+                    except Exception:
+                        pass
                     last_flush = time.monotonic()
                 continue
 
@@ -410,13 +413,19 @@ def main() -> None:
             total_buffered = sum(len(b) for b in buffers.values())
             if total_buffered >= BATCH_SIZE:
                 _flush_all(writer, buffers, stats)
-                consumer.commit(asynchronous=False)
+                try:
+                    consumer.commit(asynchronous=False)
+                except Exception:
+                    pass
                 last_flush = time.monotonic()
 
             # Time-based flush
             if time.monotonic() - last_flush >= FLUSH_INTERVAL:
                 _flush_all(writer, buffers, stats)
-                consumer.commit(asynchronous=False)
+                try:
+                    consumer.commit(asynchronous=False)
+                except Exception:
+                    pass
                 last_flush = time.monotonic()
 
     except KeyboardInterrupt:

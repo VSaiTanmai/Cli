@@ -5,8 +5,6 @@
 # Destroy: docker-compose down -v
 # =============================================================================
 
-version: "3.9"
-
 # ── Networks ─────────────────────────────────────────────────────────────────
 networks:
   clif-frontend:
@@ -48,10 +46,11 @@ services:
     networks:
       - clif-storage
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep -q imok"]
+      test: ["CMD-SHELL", "clickhouse-keeper-client -h localhost -p 2181 -q 'ruok' | grep -q imok"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
 
   # =========================================================================
@@ -69,6 +68,8 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
     volumes:
       - clickhouse01_data:/var/lib/clickhouse
       - ./clickhouse/node01_config.xml:/etc/clickhouse-server/config.d/clusters.xml:ro
@@ -78,6 +79,8 @@ services:
     depends_on:
       clickhouse-keeper:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     networks:
       - clif-backend
       - clif-storage
@@ -86,6 +89,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
     restart: unless-stopped
     ulimits:
       nofile:
@@ -107,6 +111,8 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
     volumes:
       - clickhouse02_data:/var/lib/clickhouse
       - ./clickhouse/node02_config.xml:/etc/clickhouse-server/config.d/clusters.xml:ro
@@ -116,6 +122,8 @@ services:
     depends_on:
       clickhouse-keeper:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     networks:
       - clif-backend
       - clif-storage
@@ -124,6 +132,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
     restart: unless-stopped
     ulimits:
       nofile:
@@ -146,17 +155,14 @@ services:
       - --advertise-rpc-addr redpanda01:33145
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
       - --advertise-pandaproxy-addr internal://redpanda01:8082,external://localhost:18082
-      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
-      - --advertise-schema-registry-addr internal://redpanda01:8081,external://localhost:18081
       - --smp 1
       - --memory 1G
       - --mode dev-container
       - --default-log-level=warn
-      - --seeds redpanda01:33145,redpanda02:33145,redpanda03:33145
+      - --seeds redpanda01:33145
     ports:
       - "19092:19092"   # Kafka external
       - "18082:18082"   # Pandaproxy external
-      - "18081:18081"   # Schema registry external
       - "${REDPANDA_ADMIN_PORT:-9644}:9644"   # Admin API
     volumes:
       - redpanda01_data:/var/lib/redpanda/data
@@ -187,17 +193,14 @@ services:
       - --advertise-rpc-addr redpanda02:33145
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
       - --advertise-pandaproxy-addr internal://redpanda02:8082,external://localhost:28082
-      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:28081
-      - --advertise-schema-registry-addr internal://redpanda02:8081,external://localhost:28081
       - --smp 1
       - --memory 1G
       - --mode dev-container
       - --default-log-level=warn
-      - --seeds redpanda01:33145,redpanda02:33145,redpanda03:33145
+      - --seeds redpanda01:33145
     ports:
       - "29092:29092"
       - "28082:28082"
-      - "28081:28081"
     volumes:
       - redpanda02_data:/var/lib/redpanda/data
     networks:
@@ -224,17 +227,14 @@ services:
       - --advertise-rpc-addr redpanda03:33145
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:38082
       - --advertise-pandaproxy-addr internal://redpanda03:8082,external://localhost:38082
-      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:38081
-      - --advertise-schema-registry-addr internal://redpanda03:8081,external://localhost:38081
       - --smp 1
       - --memory 1G
       - --mode dev-container
       - --default-log-level=warn
-      - --seeds redpanda01:33145,redpanda02:33145,redpanda03:33145
+      - --seeds redpanda01:33145
     ports:
       - "39092:39092"
       - "38082:38082"
-      - "38081:38081"
     volumes:
       - redpanda03_data:/var/lib/redpanda/data
     networks:
@@ -304,6 +304,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
       - minio2_data:/data
     networks:
@@ -321,6 +322,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
       - minio3_data:/data
     networks:
@@ -367,7 +369,7 @@ services:
         set -e
         BROKER="redpanda01:9092"
         PARTITIONS=$${REDPANDA_PARTITIONS:-12}
-        RF=$${REDPANDA_REPLICATION_FACTOR:-2}
+        RF=$${REDPANDA_REPLICATION_FACTOR:-3}
         RETENTION=$${REDPANDA_LOG_RETENTION_MS:-604800000}
 
         for TOPIC in raw-logs security-events process-events network-events; do
@@ -385,7 +387,7 @@ services:
         echo "All CLIF topics initialised."
     environment:
       REDPANDA_PARTITIONS: ${REDPANDA_PARTITIONS:-12}
-      REDPANDA_REPLICATION_FACTOR: ${REDPANDA_REPLICATION_FACTOR:-2}
+      REDPANDA_REPLICATION_FACTOR: ${REDPANDA_REPLICATION_FACTOR:-3}
       REDPANDA_LOG_RETENTION_MS: ${REDPANDA_LOG_RETENTION_MS:-604800000}
     networks:
       - clif-backend

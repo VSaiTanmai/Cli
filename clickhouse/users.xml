@@ -12,15 +12,9 @@
     </profiles>
 
     <users>
-        <clif_admin>
-            <password_sha256_hex/>  <!-- Overridden by env var CLICKHOUSE_PASSWORD -->
-            <networks>
-                <ip>::/0</ip>
-            </networks>
-            <profile>default</profile>
-            <quota>default</quota>
-            <access_management>1</access_management>
-        </clif_admin>
+        <!-- clif_admin user is created by Docker entrypoint via
+             CLICKHOUSE_USER / CLICKHOUSE_PASSWORD env vars.
+             Do NOT define it here to avoid duplicate password fields. -->
     </users>
 
     <quotas>

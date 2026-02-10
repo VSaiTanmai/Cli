@@ -1,3 +1,6 @@
 confluent-kafka>=2.5.0,<3
 clickhouse-connect>=0.7.16,<1
 rich>=13.7,<14
+pytest>=8.0,<9
+pytest-timeout>=2.2,<3
+requests>=2.31,<3
