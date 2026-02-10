@@ -1,0 +1,469 @@
+# =============================================================================
+# CLIF Storage Infrastructure — Docker Compose
+# =============================================================================
+# Start:   docker-compose up -d
+# Destroy: docker-compose down -v
+# =============================================================================
+
+version: "3.9"
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  clif-frontend:
+    driver: bridge
+  clif-backend:
+    driver: bridge
+  clif-storage:
+    driver: bridge
+
+# ── Persistent volumes ───────────────────────────────────────────────────────
+volumes:
+  clickhouse01_data:
+  clickhouse02_data:
+  clickhouse_keeper_data:
+  redpanda01_data:
+  redpanda02_data:
+  redpanda03_data:
+  minio1_data:
+  minio2_data:
+  minio3_data:
+  prometheus_data:
+  grafana_data:
+
+# ── Services ─────────────────────────────────────────────────────────────────
+services:
+
+  # =========================================================================
+  # ClickHouse Keeper (lightweight ZooKeeper replacement for replication)
+  # =========================================================================
+  clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:24.8
+    container_name: clif-clickhouse-keeper
+    hostname: clickhouse-keeper
+    ports:
+      - "2181:2181"
+    volumes:
+      - clickhouse_keeper_data:/var/lib/clickhouse-keeper
+      - ./clickhouse/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    networks:
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep -q imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =========================================================================
+  # ClickHouse Node 1 (shard_01 / replica_01)
+  # =========================================================================
+  clickhouse01:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clif-clickhouse01
+    hostname: clickhouse01
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse01_data:/var/lib/clickhouse
+      - ./clickhouse/node01_config.xml:/etc/clickhouse-server/config.d/clusters.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./clickhouse/storage_policy.xml:/etc/clickhouse-server/config.d/storage_policy.xml:ro
+      - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    depends_on:
+      clickhouse-keeper:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user ${CLICKHOUSE_USER:-clif_admin} --password ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me} --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # =========================================================================
+  # ClickHouse Node 2 (shard_01 / replica_02)
+  # =========================================================================
+  clickhouse02:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clif-clickhouse02
+    hostname: clickhouse02
+    ports:
+      - "8124:8123"
+      - "9001:9000"
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse02_data:/var/lib/clickhouse
+      - ./clickhouse/node02_config.xml:/etc/clickhouse-server/config.d/clusters.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./clickhouse/storage_policy.xml:/etc/clickhouse-server/config.d/storage_policy.xml:ro
+      - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    depends_on:
+      clickhouse-keeper:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user ${CLICKHOUSE_USER:-clif_admin} --password ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me} --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # =========================================================================
+  # Redpanda Broker 1
+  # =========================================================================
+  redpanda01:
+    image: redpandadata/redpanda:v24.2.8
+    container_name: clif-redpanda01
+    hostname: redpanda01
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda01:9092,external://localhost:19092
+      - --rpc-addr redpanda01:33145
+      - --advertise-rpc-addr redpanda01:33145
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda01:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --advertise-schema-registry-addr internal://redpanda01:8081,external://localhost:18081
+      - --smp 1
+      - --memory 1G
+      - --mode dev-container
+      - --default-log-level=warn
+      - --seeds redpanda01:33145,redpanda02:33145,redpanda03:33145
+    ports:
+      - "19092:19092"   # Kafka external
+      - "18082:18082"   # Pandaproxy external
+      - "18081:18081"   # Schema registry external
+      - "${REDPANDA_ADMIN_PORT:-9644}:9644"   # Admin API
+    volumes:
+      - redpanda01_data:/var/lib/redpanda/data
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # =========================================================================
+  # Redpanda Broker 2
+  # =========================================================================
+  redpanda02:
+    image: redpandadata/redpanda:v24.2.8
+    container_name: clif-redpanda02
+    hostname: redpanda02
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr internal://redpanda02:9092,external://localhost:29092
+      - --rpc-addr redpanda02:33145
+      - --advertise-rpc-addr redpanda02:33145
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
+      - --advertise-pandaproxy-addr internal://redpanda02:8082,external://localhost:28082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:28081
+      - --advertise-schema-registry-addr internal://redpanda02:8081,external://localhost:28081
+      - --smp 1
+      - --memory 1G
+      - --mode dev-container
+      - --default-log-level=warn
+      - --seeds redpanda01:33145,redpanda02:33145,redpanda03:33145
+    ports:
+      - "29092:29092"
+      - "28082:28082"
+      - "28081:28081"
+    volumes:
+      - redpanda02_data:/var/lib/redpanda/data
+    networks:
+      - clif-backend
+      - clif-storage
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # =========================================================================
+  # Redpanda Broker 3
+  # =========================================================================
+  redpanda03:
+    image: redpandadata/redpanda:v24.2.8
+    container_name: clif-redpanda03
+    hostname: redpanda03
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:39092
+      - --advertise-kafka-addr internal://redpanda03:9092,external://localhost:39092
+      - --rpc-addr redpanda03:33145
+      - --advertise-rpc-addr redpanda03:33145
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:38082
+      - --advertise-pandaproxy-addr internal://redpanda03:8082,external://localhost:38082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:38081
+      - --advertise-schema-registry-addr internal://redpanda03:8081,external://localhost:38081
+      - --smp 1
+      - --memory 1G
+      - --mode dev-container
+      - --default-log-level=warn
+      - --seeds redpanda01:33145,redpanda02:33145,redpanda03:33145
+    ports:
+      - "39092:39092"
+      - "38082:38082"
+      - "38081:38081"
+    volumes:
+      - redpanda03_data:/var/lib/redpanda/data
+    networks:
+      - clif-backend
+      - clif-storage
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # =========================================================================
+  # Redpanda Console (web UI)
+  # =========================================================================
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: clif-redpanda-console
+    hostname: redpanda-console
+    ports:
+      - "8080:8080"
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+    volumes:
+      - ./redpanda/console-config.yml:/tmp/config.yml:ro
+    networks:
+      - clif-frontend
+      - clif-backend
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # =========================================================================
+  # MinIO Node 1
+  # =========================================================================
+  minio1:
+    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+    container_name: clif-minio1
+    hostname: minio1
+    command: server http://minio{1...3}/data --console-address ":9001"
+    ports:
+      - "${MINIO_DATA_PORT:-9002}:9000"
+      - "${MINIO_CONSOLE_PORT:-9003}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    volumes:
+      - minio1_data:/data
+    networks:
+      - clif-storage
+      - clif-frontend
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # =========================================================================
+  # MinIO Node 2
+  # =========================================================================
+  minio2:
+    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+    container_name: clif-minio2
+    hostname: minio2
+    command: server http://minio{1...3}/data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
+    volumes:
+      - minio2_data:/data
+    networks:
+      - clif-storage
+    restart: unless-stopped
+
+  # =========================================================================
+  # MinIO Node 3
+  # =========================================================================
+  minio3:
+    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+    container_name: clif-minio3
+    hostname: minio3
+    command: server http://minio{1...3}/data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
+    volumes:
+      - minio3_data:/data
+    networks:
+      - clif-storage
+    restart: unless-stopped
+
+  # =========================================================================
+  # MinIO bucket initialiser (creates buckets then exits)
+  # =========================================================================
+  minio-init:
+    image: minio/mc:RELEASE.2024-08-26T10-49-58Z
+    container_name: clif-minio-init
+    depends_on:
+      minio1:
+        condition: service_healthy
+    entrypoint: |
+      /bin/sh -c "
+        mc alias set clif http://minio1:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+        mc mb --ignore-existing clif/${MINIO_BUCKET_COLD:-clif-cold-logs};
+        mc mb --ignore-existing clif/${MINIO_BUCKET_BACKUPS:-clif-backups};
+        mc mb --ignore-existing clif/${MINIO_BUCKET_EVIDENCE:-clif-evidence-archive};
+        mc anonymous set download clif/${MINIO_BUCKET_COLD:-clif-cold-logs};
+        echo 'MinIO buckets initialised.';
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-clif_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-clif_minio_secret_change_me}
+    networks:
+      - clif-storage
+
+  # =========================================================================
+  # Redpanda topic initialiser (creates topics then exits)
+  # =========================================================================
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.8
+    container_name: clif-redpanda-init
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        BROKER="redpanda01:9092"
+        PARTITIONS=$${REDPANDA_PARTITIONS:-12}
+        RF=$${REDPANDA_REPLICATION_FACTOR:-2}
+        RETENTION=$${REDPANDA_LOG_RETENTION_MS:-604800000}
+
+        for TOPIC in raw-logs security-events process-events network-events; do
+          rpk topic create "$$TOPIC" \
+            --brokers "$$BROKER" \
+            --partitions "$$PARTITIONS" \
+            --replicas "$$RF" \
+            --topic-config retention.ms="$$RETENTION" \
+            --topic-config cleanup.policy=delete \
+            --topic-config compression.type=zstd || true
+          echo "  ✔ topic $$TOPIC ready"
+        done
+
+        rpk topic list --brokers "$$BROKER"
+        echo "All CLIF topics initialised."
+    environment:
+      REDPANDA_PARTITIONS: ${REDPANDA_PARTITIONS:-12}
+      REDPANDA_REPLICATION_FACTOR: ${REDPANDA_REPLICATION_FACTOR:-2}
+      REDPANDA_LOG_RETENTION_MS: ${REDPANDA_LOG_RETENTION_MS:-604800000}
+    networks:
+      - clif-backend
+
+  # =========================================================================
+  # CLIF Consumer (Redpanda → ClickHouse pipeline)
+  # =========================================================================
+  clif-consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: clif-consumer
+    hostname: clif-consumer
+    environment:
+      KAFKA_BROKERS: redpanda01:9092,redpanda02:9092,redpanda03:9092
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-5000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-2}
+      CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
+      LOG_LEVEL: INFO
+    depends_on:
+      clickhouse01:
+        condition: service_healthy
+      redpanda01:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    restart: unless-stopped
+
+  # =========================================================================
+  # Prometheus
+  # =========================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: clif-prometheus
+    hostname: prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks:
+      - clif-frontend
+      - clif-storage
+      - clif-backend
+    restart: unless-stopped
+
+  # =========================================================================
+  # Grafana
+  # =========================================================================
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: clif-grafana
+    hostname: grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-clif_grafana_change_me}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/clif-overview.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/clif-overview.json:ro
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+    networks:
+      - clif-frontend
+      - clif-storage
+    depends_on:
+      - prometheus
+    restart: unless-stopped

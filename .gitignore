@@ -1,0 +1,1 @@
+﻿# Local env\n.env\n# Python artifacts\n__pycache__/\n*.pyc\n.DS_Store\n
