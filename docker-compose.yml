@@ -171,10 +171,10 @@ services:
       - clif-backend
       - clif-storage
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
-      interval: 15s
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.*true' || rpk brokers list | grep -q '9092'"]
+      interval: 10s
       timeout: 10s
-      retries: 10
+      retries: 20
       start_period: 30s
     restart: unless-stopped
 

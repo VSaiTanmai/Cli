@@ -1,33 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CLIF SOC Dashboard
+
+Enterprise Security Operations Center dashboard for the CLIF (Cognitive Log Investigation Framework) prototype.
+
+## Tech Stack
+
+- **Next.js 14** (App Router)
+- **TypeScript**
+- **Tailwind CSS** — dark zinc/slate theme
+- **shadcn/ui** — button, card, badge, input, tabs, skeleton, scroll-area, tooltip, separator
+- **Recharts** — area charts, bar charts
+- **@xyflow/react** (React Flow v12) — attack graph visualization
+- **lucide-react** — icons
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Runs on **http://localhost:3001** (port 3000 is typically Grafana).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### API Routes (Real-time)
 
-## Learn More
+| Route | Source | Description |
+|-------|--------|-------------|
+| `/api/metrics` | ClickHouse HTTP | Event counts, severity distributions, ingestion rates |
+| `/api/events/stream` | ClickHouse HTTP | Latest 100 raw_logs for live feed polling |
+| `/api/alerts` | ClickHouse HTTP | Security events with severity ≥ 3 |
+| `/api/system` | Prometheus + Direct HTTP | Service health from `up` metric + ClickHouse `/ping` |
 
-To learn more about Next.js, take a look at the following resources:
+### Mock Data (Demo)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Investigations, AI agents, threat intel IOCs, evidence chain, and reports use mock JSON files under `src/lib/mock/` for demo purposes. These will be replaced with real backend integrations.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Key Libraries
+
+- `src/lib/clickhouse.ts` — ClickHouse HTTP client (POST queries, JSON format)
+- `src/lib/prometheus.ts` — Prometheus query wrapper
+- `src/lib/redpanda.ts` — Redpanda Admin API client
+- `src/hooks/use-polling.ts` — Generic polling hook with configurable interval
+
+## Pages
+
+12 pages across 5 sections: Monitor, Investigate, Intelligence, Evidence, System.
+
+See the main [README](../README.md) for the full page reference table.
 
 ## Deploy on Vercel
 

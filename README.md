@@ -1,7 +1,7 @@
-# CLIF Storage Infrastructure
+# CLIF — Cognitive Log Investigation Framework
 
-> **Cognitive Log Investigation Framework** — Stage 3 Prototype  
-> Foundation layer: ClickHouse + Redpanda + MinIO (S3) with high-throughput consumer pipeline, monitoring, and test suites.
+> **Stage 3 Prototype** — Enterprise SOC platform  
+> High-throughput log pipeline (ClickHouse + Redpanda + MinIO) with a 12-page real-time SOC dashboard, automated monitoring, and full test suites.
 
 ---
 
@@ -68,6 +68,17 @@
 │    Prometheus  ──►  Grafana                                           │
 │    Scrapes: ClickHouse, Redpanda, MinIO                               │
 └───────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────┐
+│  SOC Dashboard  (Next.js 14 / TypeScript / Tailwind / shadcn/ui)     │
+│                                                                       │
+│  12 pages:  Dashboard │ Live Feed │ Search │ Alerts │ Investigations  │
+│             Attack Graph │ AI Agents │ Threat Intel │ Evidence Chain  │
+│             Reports │ System Health │ Settings                        │
+│                                                                       │
+│  Real-time API routes → ClickHouse (HTTP) + Prometheus + Redpanda    │
+│  React Flow attack graph │ Recharts analytics │ Dark zinc theme       │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -103,7 +114,16 @@ This brings up (in dependency order):
 7. Redpanda Console  
 8. Prometheus & Grafana
 
-### 3. Verify everything is healthy
+### 3. Start the SOC Dashboard
+
+```bash
+cd dashboard
+npm install
+npm run dev
+# Opens on http://localhost:3001 (port 3000 is Grafana)
+```
+
+### 4. Verify everything is healthy
 
 ```bash
 # All containers running
@@ -122,15 +142,16 @@ rpk topic list --brokers localhost:19092
 docker exec clif-minio-init mc ls clif/
 ```
 
-### 4. Access web UIs
+### 5. Access web UIs
 
-| Service           | URL                        | Credentials                  |
-|-------------------|----------------------------|------------------------------|
-| Redpanda Console  | http://localhost:8080       | (no auth)                    |
-| MinIO Console     | http://localhost:9003       | clif_minio_admin / (see .env)|
-| Grafana           | http://localhost:3000       | admin / (see .env)           |
-| Prometheus        | http://localhost:9090       | (no auth)                    |
-| ClickHouse HTTP   | http://localhost:8123       | clif_admin / (see .env)      |
+| Service            | URL                        | Credentials                  |
+|--------------------|----------------------------|------------------------------|
+| **CLIF Dashboard** | http://localhost:3001       | (no auth)                    |
+| Grafana            | http://localhost:3000       | admin / (see .env)           |
+| Redpanda Console   | http://localhost:8080       | (no auth)                    |
+| MinIO Console      | http://localhost:9003       | clif_minio_admin / (see .env)|
+| Prometheus         | http://localhost:9090       | (no auth)                    |
+| ClickHouse HTTP    | http://localhost:8123       | clif_admin / (see .env)      |
 
 ---
 
@@ -183,7 +204,7 @@ python tests/performance_test.py --events 1000000 --rate 100000 --duration 60
 | Metric                 | Target              | Achieved            | Notes                              |
 |------------------------|---------------------|---------------------|------------------------------------|
 | E2E throughput         | ≥ 70k events/sec    | ~78k events/sec     | 3 consumers, 1M event benchmark    |
-| Produce throughput     | ≥ 100k events/sec   | ~170k events/sec    | LZ4, acks=1, multiprocess          |
+| Produce throughput     | ≥ 100k events/sec   | ~244k events/sec    | LZ4, acks=1, multiprocess          |
 | End-to-end latency     | < 5s                | < 3s (probe batch)  | Redpanda → ClickHouse              |
 | Query (last 24h)       | < 500ms             | < 200ms             | On typical analyst queries          |
 | Compression ratio      | 15–20x              | 15–20x              | ZSTD on columnar data               |
@@ -202,6 +223,31 @@ CLIF/
 ├── .env                            # Local environment (git-ignored)
 ├── pytest.ini                      # Pytest configuration
 ├── README.md                       # This file
+│
+├── dashboard/                      # SOC Dashboard (Next.js 14)
+│   ├── src/app/                    # 12 page routes + 4 API routes
+│   │   ├── dashboard/              # Overview KPIs, charts, tables
+│   │   ├── live-feed/              # Real-time event stream (2s polling)
+│   │   ├── search/                 # Full-text search with filters
+│   │   ├── alerts/                 # Alert queue with workflow states
+│   │   ├── investigations/         # Case management + detail views
+│   │   ├── attack-graph/           # React Flow threat visualization
+│   │   ├── ai-agents/              # AI agent cards + approval queue
+│   │   ├── threat-intel/           # IOCs, patterns, MITRE mappings
+│   │   ├── evidence/               # Blockchain chain-of-custody
+│   │   ├── reports/                # Report templates & history
+│   │   ├── system/                 # Real-time service health (Prometheus)
+│   │   ├── settings/               # Configuration & user management
+│   │   └── api/                    # Backend API routes
+│   │       ├── metrics/            # ClickHouse aggregation queries
+│   │       ├── events/stream/      # Live event polling endpoint
+│   │       ├── alerts/             # Alert management
+│   │       └── system/             # Prometheus + direct health checks
+│   ├── src/components/             # Sidebar, TopBar, shadcn/ui
+│   ├── src/lib/                    # ClickHouse, Prometheus, Redpanda clients
+│   ├── src/hooks/                  # usePolling custom hook
+│   ├── package.json
+│   └── tailwind.config.ts
 │
 ├── clickhouse/
 │   ├── schema.sql                  # All table definitions + MVs
@@ -334,6 +380,25 @@ docker-compose down
 
 ---
 
+## Dashboard Pages
+
+| Page | Route | Data Source | Description |
+|------|-------|-------------|-------------|
+| Dashboard | `/dashboard` | ClickHouse | KPI cards, event trend chart, severity distribution, top sources |
+| Live Feed | `/live-feed` | ClickHouse (2s poll) | Real-time event stream with pause/filter/auto-scroll |
+| Search | `/search` | ClickHouse | Full-text search across all tables, time/severity filters, CSV export |
+| Alerts | `/alerts` | ClickHouse | Alert queue with New/Acknowledged/Investigating/Resolved workflow |
+| Investigations | `/investigations` | Mock JSON | Case list with status, severity, MITRE ATT&CK tags |
+| Attack Graph | `/attack-graph` | Mock JSON | React Flow canvas — lateral movement, DNS tunneling, PowerShell chains |
+| AI Agents | `/ai-agents` | Mock JSON | 5 agent cards (Triage/Hunter/Verifier/Escalation/Reporter), approvals |
+| Threat Intel | `/threat-intel` | Mock JSON | IOC table with type/confidence/MITRE, threat pattern cards |
+| Evidence | `/evidence` | Mock JSON | Blockchain chain-of-custody, Merkle roots, batch history |
+| Reports | `/reports` | Mock JSON | Report templates & historical reports |
+| System Health | `/system` | Prometheus + Direct | Real-time service status for all infrastructure components |
+| Settings | `/settings` | Static | Config, data sources, notifications, integrations, users, API keys |
+
+---
+
 ## Next Steps (Week 2+)
 
 - **Week 2**: Tetragon eBPF integration → events flow into `process_events` and `network_events`
@@ -344,4 +409,4 @@ docker-compose down
 
 ---
 
-*CLIF Stage 3 — Storage Infrastructure — v1.0*
+*CLIF Stage 3 — Storage + SOC Dashboard — v2.0*
