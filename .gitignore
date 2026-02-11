@@ -7,6 +7,13 @@ __pycache__/
 *.pyo
 .pytest_cache/
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+dashboard/.next/
+dashboard/node_modules/
+
 # OS files
 .DS_Store
 Thumbs.db
