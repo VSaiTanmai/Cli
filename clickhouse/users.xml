@@ -8,8 +8,8 @@
             <!-- Tier 1: Async insert — buffer micro-batches server-side -->
             <async_insert>1</async_insert>
             <wait_for_async_insert>0</wait_for_async_insert>
-            <async_insert_max_data_size>10485760</async_insert_max_data_size>
-            <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
+            <async_insert_max_data_size>104857600</async_insert_max_data_size>
+            <async_insert_busy_timeout_ms>100</async_insert_busy_timeout_ms>
         </default>
         <readonly>
             <readonly>1</readonly>

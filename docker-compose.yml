@@ -39,7 +39,7 @@ services:
     container_name: clif-clickhouse-keeper
     hostname: clickhouse-keeper
     ports:
-      - "2181:2181"
+      - "${ZOOKEEPER_PORT:-12181}:2181"
     volumes:
       - clickhouse_keeper_data:/var/lib/clickhouse-keeper
       - ./clickhouse/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
@@ -157,6 +157,7 @@ services:
       - --advertise-pandaproxy-addr internal://redpanda01:8082,external://localhost:18082
       - --smp 1
       - --memory 1G
+      - --reserve-memory 0M
       - --mode dev-container
       - --default-log-level=warn
       - --seeds redpanda01:33145
@@ -195,6 +196,7 @@ services:
       - --advertise-pandaproxy-addr internal://redpanda02:8082,external://localhost:28082
       - --smp 1
       - --memory 1G
+      - --reserve-memory 0M
       - --mode dev-container
       - --default-log-level=warn
       - --seeds redpanda01:33145
@@ -229,6 +231,7 @@ services:
       - --advertise-pandaproxy-addr internal://redpanda03:8082,external://localhost:38082
       - --smp 1
       - --memory 1G
+      - --reserve-memory 0M
       - --mode dev-container
       - --default-log-level=warn
       - --seeds redpanda01:33145
@@ -379,7 +382,7 @@ services:
             --replicas "$$RF" \
             --topic-config retention.ms="$$RETENTION" \
             --topic-config cleanup.policy=delete \
-            --topic-config compression.type=zstd || true
+            --topic-config compression.type=producer || true
           echo "  ✔ topic $$TOPIC ready"
         done
 
@@ -393,7 +396,7 @@ services:
       - clif-backend
 
   # =========================================================================
-  # CLIF Consumer (Redpanda → ClickHouse pipeline)
+  # CLIF Consumer 1 (Redpanda → ClickHouse pipeline)
   # =========================================================================
   clif-consumer:
     build:
@@ -404,17 +407,81 @@ services:
     environment:
       KAFKA_BROKERS: redpanda01:9092,redpanda02:9092,redpanda03:9092
       CLICKHOUSE_HOST: clickhouse01
-      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_PORT: 9000
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-50000}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
       CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-500}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
       CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
-      CONSUMER_DESER_WORKERS: ${CONSUMER_DESER_WORKERS:-8}
+      LOG_LEVEL: INFO
+    depends_on:
+      clickhouse01:
+        condition: service_healthy
+      redpanda01:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    restart: unless-stopped
+
+  # ── Consumer-2: horizontal scaling for higher E2E throughput ──
+  # Re-enabled after Redpanda memory optimization freed 2.5GB.
+  # Same consumer group → Redpanda distributes partitions across both.
+  clif-consumer-2:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: clif-consumer-2
+    hostname: clif-consumer-2
+    environment:
+      KAFKA_BROKERS: redpanda01:9092,redpanda02:9092,redpanda03:9092
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
+      CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
+      LOG_LEVEL: INFO
+    depends_on:
+      clickhouse01:
+        condition: service_healthy
+      redpanda01:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    restart: unless-stopped
+
+  # ── Consumer-3: 3rd horizontal consumer for 70-100K+ E2E throughput ──
+  # 12 partitions / 3 consumers = 4 partitions each (optimal distribution)
+  clif-consumer-3:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: clif-consumer-3
+    hostname: clif-consumer-3
+    environment:
+      KAFKA_BROKERS: redpanda01:9092,redpanda02:9092,redpanda03:9092
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
+      CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:

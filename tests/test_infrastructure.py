@@ -335,7 +335,7 @@ class TestConsumerPipeline:
     def test_consumer_connected_to_clickhouse(self):
         """Look for the 'connected to ClickHouse' line in recent logs."""
         result = subprocess.run(
-            ["docker", "logs", "--tail", "50", "clif-consumer"],
+            ["docker", "logs", "--tail", "500", "clif-consumer"],
             capture_output=True, text=True, timeout=10,
         )
         combined = result.stdout + result.stderr
@@ -346,7 +346,7 @@ class TestConsumerPipeline:
 
     def test_consumer_subscribed_to_topics(self):
         result = subprocess.run(
-            ["docker", "logs", "--tail", "50", "clif-consumer"],
+            ["docker", "logs", "--tail", "500", "clif-consumer"],
             capture_output=True, text=True, timeout=10,
         )
         combined = result.stdout + result.stderr

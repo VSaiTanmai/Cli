@@ -16,7 +16,7 @@
     <!-- ================================================================= -->
     <background_pool_size>16</background_pool_size>
     <background_move_pool_size>8</background_move_pool_size>
-    <background_merges_mutations_concurrency_ratio>4</background_merges_mutations_concurrency_ratio>
+    <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
     <background_schedule_pool_size>16</background_schedule_pool_size>
     <background_fetches_pool_size>8</background_fetches_pool_size>
     <background_common_pool_size>8</background_common_pool_size>

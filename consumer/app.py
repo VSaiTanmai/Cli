@@ -1,69 +1,81 @@
 """
 CLIF Consumer — Redpanda → ClickHouse High-Performance Ingestion Pipeline.
 
-Production-grade multi-threaded consumer with:
-  • Batch polling via consume() — up to 500 messages per call
-  • Thread-pool based parallel deserialization and row building
-  • Per-table concurrent flush via ThreadPoolExecutor
-  • Optimized Kafka fetch settings (64KB min fetch, 50MB max)
+Production-grade consumer with:
+  • Batch polling via consume() — up to 10 000 messages per call
+  • Inline deserialization + columnar buffer accumulation
+  • Columnar INSERT via clickhouse-driver (columnar=True, native TCP)
+  • Per-table concurrent flush via ThreadPoolExecutor (4 workers default)
+  • Pipelined flush — non-blocking: main loop resumes polling immediately
+  • Optimized Kafka fetch settings (64KB min fetch, 50MB max, 4MB/partition)
   • Back-pressure aware batching with size + time triggers
   • Graceful shutdown with drain and final synchronous commit
   • Connection-pool pattern: one ClickHouseWriter per flush worker
   • Health metrics via StatsReporter with per-second rate tracking
   • Server-side UUID generation (event_id omitted from inserts)
+  • async_insert=1 with 100ms timeout — server-side micro-batch buffering
+  • Horizontally scalable: run multiple instances in same consumer group
 
 Environment variables:
     KAFKA_BROKERS               comma-separated broker list
-    CLICKHOUSE_HOST             ClickHouse HTTP host
-    CLICKHOUSE_PORT             ClickHouse HTTP port
+    CLICKHOUSE_HOST             ClickHouse native TCP host
+    CLICKHOUSE_PORT             ClickHouse native TCP port (9000)
     CLICKHOUSE_USER             ClickHouse username
     CLICKHOUSE_PASSWORD         ClickHouse password
     CLICKHOUSE_DB               target database (default: clif_logs)
     CONSUMER_GROUP_ID           Kafka consumer group
-    CONSUMER_BATCH_SIZE         max events per INSERT batch (default: 50000)
+    CONSUMER_BATCH_SIZE         max events per INSERT batch (default: 200000)
     CONSUMER_FLUSH_INTERVAL_SEC max seconds between flushes (default: 0.5)
     CONSUMER_MAX_RETRIES        retries on ClickHouse insert failure
-    CONSUMER_POLL_BATCH         messages per consume() call (default: 500)
+    CONSUMER_POLL_BATCH         messages per consume() call (default: 10000)
     CONSUMER_FLUSH_WORKERS      parallel flush threads (default: 4)
-    CONSUMER_DESER_WORKERS      deserialization thread pool size (default: 8)
     LOG_LEVEL                   Python log level (DEBUG/INFO/WARNING/…)
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import signal
 import sys
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from threading import Event, Lock, Thread
 from typing import Any
 
 from confluent_kafka import Consumer, KafkaError, KafkaException
-import clickhouse_connect
+from clickhouse_driver import Client as CHClient
+
+try:
+    import orjson as _json  # 3-10x faster JSON parsing (C/Rust)
+
+    def _json_loads(data: bytes | str) -> Any:
+        return _json.loads(data)
+except ImportError:
+    import json as _json  # type: ignore[no-redef]
+
+    def _json_loads(data: bytes | str) -> Any:  # type: ignore[misc]
+        return _json.loads(data)
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
 KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "redpanda01:9092")
 CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "clickhouse01")
-CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", "8123"))
+CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", "9000"))
 CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "clif_admin")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "clif_secure_password_change_me")
 CLICKHOUSE_DB = os.getenv("CLICKHOUSE_DB", "clif_logs")
 CONSUMER_GROUP = os.getenv("CONSUMER_GROUP_ID", "clif-clickhouse-consumer")
-BATCH_SIZE = int(os.getenv("CONSUMER_BATCH_SIZE", "50000"))
+BATCH_SIZE = int(os.getenv("CONSUMER_BATCH_SIZE", "200000"))
 FLUSH_INTERVAL = float(os.getenv("CONSUMER_FLUSH_INTERVAL_SEC", "0.5"))
 MAX_RETRIES = int(os.getenv("CONSUMER_MAX_RETRIES", "5"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # Performance tuning knobs
-POLL_BATCH = int(os.getenv("CONSUMER_POLL_BATCH", "500"))
+POLL_BATCH = int(os.getenv("CONSUMER_POLL_BATCH", "10000"))
 FLUSH_WORKERS = int(os.getenv("CONSUMER_FLUSH_WORKERS", "4"))
-DESER_WORKERS = int(os.getenv("CONSUMER_DESER_WORKERS", "8"))
 
 # Topic → ClickHouse table mapping
 TOPIC_TABLE_MAP: dict[str, str] = {
@@ -105,20 +117,30 @@ signal.signal(signal.SIGTERM, _handle_signal)
 _UTC = timezone.utc
 
 
-def _now_str() -> str:
-    """Return current UTC time as ClickHouse DateTime64 string."""
-    return datetime.now(_UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+def _now_dt() -> datetime:
+    """Return current UTC time as a timezone-aware datetime."""
+    return datetime.now(_UTC)
 
 
-def _parse_timestamp(raw: str | None) -> str:
-    """Return a ClickHouse-compatible DateTime64 string."""
+def _parse_timestamp(raw: str | None) -> datetime:
+    """Parse an ISO-8601 string into a timezone-aware datetime object.
+
+    clickhouse-driver (native TCP) requires real datetime objects for
+    DateTime / DateTime64 columns — plain strings cause
+    ``'str' object has no attribute 'tzinfo'``.
+
+    Python 3.11+ fromisoformat() handles 'Z' suffix natively — no
+    string allocation needed for the common UTC timestamp case.
+    """
     if not raw:
-        return _now_str()
+        return _now_dt()
     try:
-        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_UTC)
+        return dt
     except (ValueError, AttributeError):
-        return _now_str()
+        return _now_dt()
 
 
 def _safe_str(val: Any, default: str = "") -> str:
@@ -145,8 +167,8 @@ def _ensure_dict(meta: Any) -> dict:
         return {}
     if isinstance(meta, str):
         try:
-            meta = json.loads(meta)
-        except json.JSONDecodeError:
+            meta = _json_loads(meta)
+        except (ValueError, TypeError):
             return {}
     if isinstance(meta, dict):
         return meta
@@ -162,7 +184,7 @@ def _build_raw_log_row(msg: dict) -> list:
     meta = _ensure_dict(msg.get("metadata"))
     return [
         _parse_timestamp(msg.get("timestamp")),     # timestamp
-        _now_str(),                                  # received_at
+        _now_dt(),                                   # received_at
         _safe_str(msg.get("level"), "INFO"),         # level
         _safe_str(msg.get("source"), "unknown"),     # source
         _safe_str(msg.get("message")),               # message
@@ -287,8 +309,8 @@ TABLE_META: dict[str, dict] = {
 class ClickHouseWriter:
     """
     Manages batched inserts into ClickHouse with connection resilience.
-    Each writer owns a single HTTP connection. Create one per flush-worker
-    thread to avoid contention on a shared socket.
+    Each writer owns a single native TCP connection. Create one per
+    flush-worker thread to avoid contention on a shared socket.
     """
 
     def __init__(self, writer_id: int = 0) -> None:
@@ -298,22 +320,32 @@ class ClickHouseWriter:
     def _connect(self):
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                client = clickhouse_connect.get_client(
+                client = CHClient(
                     host=CLICKHOUSE_HOST,
                     port=CLICKHOUSE_PORT,
-                    username=CLICKHOUSE_USER,
+                    user=CLICKHOUSE_USER,
                     password=CLICKHOUSE_PASSWORD,
                     database=CLICKHOUSE_DB,
                     connect_timeout=30,
                     send_receive_timeout=120,
-                    compress=True,  # LZ4 wire compression
+                    compression='lz4',  # LZ4 wire compression
                     settings={
+                        # async_insert RE-ENABLED — with wait=0, INSERT returns
+                        # immediately (no blocking). ClickHouse buffers and
+                        # flushes to parts asynchronously. This dramatically
+                        # reduces per-INSERT latency vs sync writes, letting
+                        # flush workers return fast → main loop resumes polling.
+                        # Short 200ms timeout keeps data visibility lag minimal.
                         "async_insert": 1,
                         "wait_for_async_insert": 0,
-                        "async_insert_busy_timeout_ms": 200,
-                        "async_insert_max_data_size": 10485760,  # 10 MB
+                        "async_insert_busy_timeout_ms": 100,
+                        "async_insert_max_data_size": 104857600,  # 100 MB
+                        # Parallel INSERT processing within ClickHouse
+                        "max_insert_threads": 4,
                     },
                 )
+                # Verify connectivity with a lightweight ping
+                client.execute("SELECT 1")
                 log.info(
                     "Writer-%d connected to ClickHouse %s:%s (attempt %d)",
                     self._id, CLICKHOUSE_HOST, CLICKHOUSE_PORT, attempt,
@@ -326,12 +358,18 @@ class ClickHouseWriter:
                 time.sleep(min(2 ** attempt, 30))
         raise RuntimeError("unreachable")
 
-    def insert(self, table: str, columns: list[str], rows: list[list]) -> int:
-        """Insert a batch of rows with retries. Returns row count on success."""
-        row_count = len(rows)
+    def insert(self, table: str, columns: list[str], col_data: list[list]) -> int:
+        """Insert columnar data with retries. Returns row count on success."""
+        if not col_data or not col_data[0]:
+            return 0
+        row_count = len(col_data[0])
+        col_str = ", ".join(columns)
+        sql = f"INSERT INTO {table} ({col_str}) VALUES"
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                self.client.insert(table, rows, column_names=columns)
+                self.client.execute(
+                    sql, col_data, columnar=True, types_check=False,
+                )
                 return row_count
             except Exception as exc:
                 log.warning(
@@ -446,8 +484,8 @@ def _deserialize_and_build(raw_msg) -> tuple[str, list] | None:
         return None
 
     try:
-        payload = json.loads(raw_msg.value())
-    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        payload = _json_loads(raw_msg.value())
+    except (ValueError, UnicodeDecodeError, TypeError):
         return None
 
     builder = TABLE_META[table]["builder"]
@@ -465,12 +503,12 @@ def _flush_table(
     writer_pool: WriterPool,
     table: str,
     columns: list[str],
-    rows: list[list],
+    col_data: list[list],
 ) -> int:
-    """Flush a single table's rows using a pooled writer."""
+    """Flush a single table's columnar data using a pooled writer."""
     writer = writer_pool.acquire()
     try:
-        return writer.insert(table, columns, rows)
+        return writer.insert(table, columns, col_data)
     finally:
         writer_pool.release(writer)
 
@@ -480,41 +518,58 @@ def _flush_all_parallel(
     buffers: dict[str, list[list]],
     stats: StatsReporter,
     flush_executor: ThreadPoolExecutor,
+    pending_futures: list,
 ) -> None:
     """
-    Flush all non-empty buffers in parallel using the writer pool.
-    Each table gets its own thread + dedicated ClickHouse connection.
-    Buffers are snapshot-and-cleared so the main loop can resume immediately.
+    Pipelined flush: collect results from any PREVIOUS flush that finished,
+    then snapshot-and-submit the current buffers WITHOUT blocking.
+    The main loop resumes polling immediately after submission.
+
+    ``pending_futures`` is a mutable list shared across calls — it accumulates
+    futures and is drained as they complete.
     """
-    tasks = {}
-    for table, rows in buffers.items():
-        if not rows:
+    # ── 1. Harvest completed futures from previous flush (non-blocking) ──
+    still_pending = []
+    total_flushed = 0
+    for fut, table, count in pending_futures:
+        if fut.done():
+            try:
+                flushed = fut.result()
+                total_flushed += flushed
+                log.debug("Flushed %d rows → %s", flushed, table)
+            except Exception as exc:
+                log.error("Failed to flush %d rows → %s: %s", count, table, exc)
+                stats.record_error(count)
+        else:
+            still_pending.append((fut, table, count))
+    pending_futures.clear()
+    pending_futures.extend(still_pending)
+    if total_flushed > 0:
+        stats.record_flush(total_flushed)
+
+    # ── 2. Back-pressure: if too many pending, wait for oldest ──
+    while len(pending_futures) >= 16:  # cap in-flight flushes
+        fut, table, count = pending_futures.pop(0)
+        try:
+            flushed = fut.result(timeout=30)
+            stats.record_flush(flushed)
+        except Exception as exc:
+            log.error("Back-pressured flush %d rows → %s failed: %s", count, table, exc)
+            stats.record_error(count)
+
+    # ── 3. Snapshot + submit new flush tasks (non-blocking) ──
+    for table, col_bufs in buffers.items():
+        if not col_bufs[0]:
             continue
-        # Snapshot and clear — main loop can resume filling immediately
-        snapshot = list(rows)
-        rows.clear()
+        row_count = len(col_bufs[0])
+        snapshot = [list(col) for col in col_bufs]
+        for col in col_bufs:
+            col.clear()
         columns = TABLE_META[table]["columns"]
         future = flush_executor.submit(
             _flush_table, writer_pool, table, columns, snapshot,
         )
-        tasks[future] = (table, len(snapshot))
-
-    if not tasks:
-        return
-
-    total_flushed = 0
-    for future in as_completed(tasks):
-        table, count = tasks[future]
-        try:
-            flushed = future.result()
-            total_flushed += flushed
-            log.debug("Flushed %d rows → %s", flushed, table)
-        except Exception as exc:
-            log.error("Failed to flush %d rows → %s: %s", count, table, exc)
-            stats.record_error(count)
-
-    if total_flushed > 0:
-        stats.record_flush(total_flushed)
+        pending_futures.append((future, table, row_count))
 
 
 # ── Main consumer loop ──────────────────────────────────────────────────────
@@ -523,9 +578,9 @@ def _flush_all_parallel(
 def main() -> None:
     log.info(
         "Starting CLIF consumer  brokers=%s  group=%s  batch=%d  flush=%.1fs  "
-        "poll_batch=%d  flush_workers=%d  deser_workers=%d",
+        "poll_batch=%d  flush_workers=%d",
         KAFKA_BROKERS, CONSUMER_GROUP, BATCH_SIZE, FLUSH_INTERVAL,
-        POLL_BATCH, FLUSH_WORKERS, DESER_WORKERS,
+        POLL_BATCH, FLUSH_WORKERS,
     )
 
     # ── Initialize writer pool (one connection per flush worker) ──
@@ -543,14 +598,14 @@ def main() -> None:
         # ── Fetch tuning: batch at the broker to reduce round-trips ──
         "fetch.min.bytes": 65536,                # 64 KB — wait for a decent batch
         "fetch.max.bytes": 52428800,             # 50 MB — max per fetch response
-        "max.partition.fetch.bytes": 1048576,    # 1 MB per partition
-        "fetch.wait.max.ms": 200,                # max 200ms broker-side wait
+        "max.partition.fetch.bytes": 4194304,    # 4 MB per partition
+        "fetch.wait.max.ms": 100,                # max 100ms broker-side wait
         # ── Session / poll tuning ──
         "session.timeout.ms": 30000,
         "max.poll.interval.ms": 300000,
         "heartbeat.interval.ms": 10000,
         # ── Consumer prefetch buffer ──
-        "queued.min.messages": 10000,
+        "queued.min.messages": 50000,
         "queued.max.messages.kbytes": 131072,    # 128 MB prefetch buffer
         # ── Partition EOF is not an error ──
         "enable.partition.eof": False,
@@ -559,17 +614,19 @@ def main() -> None:
     log.info("Subscribed to topics: %s", TOPICS)
 
     # ── Thread pools ──
-    deser_pool = ThreadPoolExecutor(
-        max_workers=DESER_WORKERS, thread_name_prefix="deser",
-    )
     flush_pool = ThreadPoolExecutor(
         max_workers=FLUSH_WORKERS, thread_name_prefix="flush",
     )
 
-    # Per-table row buffers
-    buffers: dict[str, list[list]] = {table: [] for table in TABLE_META}
+    # Per-table columnar buffers: {table: [col0_vals, col1_vals, ...]}
+    buffers: dict[str, list[list]] = {
+        table: [[] for _ in TABLE_META[table]["columns"]]
+        for table in TABLE_META
+    }
     last_flush = time.monotonic()
     total_buffered = 0
+    # Pipelined flush: pending futures carried across flush cycles
+    pending_futures: list[tuple] = []
 
     try:
         while not _shutdown.is_set():
@@ -579,34 +636,50 @@ def main() -> None:
             if not messages:
                 # No messages — check time-based flush
                 if time.monotonic() - last_flush >= FLUSH_INTERVAL and total_buffered > 0:
-                    _flush_all_parallel(writer_pool, buffers, stats, flush_pool)
+                    _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
                     consumer.commit(asynchronous=True)
                     total_buffered = 0
                     last_flush = time.monotonic()
                 continue
 
-            # ── Parallel deserialization + row building ──
-            batch_len = len(messages)
-            if batch_len >= 50:
-                # Worth parallelizing for large batches
-                results = list(deser_pool.map(_deserialize_and_build, messages))
-            else:
-                # Small batch — inline to avoid thread overhead
-                results = [_deserialize_and_build(m) for m in messages]
-
-            # ── Distribute rows into per-table buffers ──
+            # ── Inline deserialization + columnar distribution ──
             msg_count = 0
             error_count = 0
             topic_counts: dict[str, int] = defaultdict(int)
 
-            for result in results:
-                if result is None:
+            for raw_msg in messages:
+                if raw_msg is None:
+                    continue
+                err = raw_msg.error()
+                if err:
+                    if err.code() != KafkaError._PARTITION_EOF:
+                        error_count += 1
+                    continue
+
+                topic = raw_msg.topic()
+                table = TOPIC_TABLE_MAP.get(topic)
+                if table is None:
+                    continue
+
+                try:
+                    payload = _json_loads(raw_msg.value())
+                except (ValueError, UnicodeDecodeError, TypeError):
                     error_count += 1
                     continue
-                table, row = result
-                buffers[table].append(row)
+
+                try:
+                    row = TABLE_META[table]["builder"](payload)
+                except Exception:
+                    error_count += 1
+                    continue
+
+                # Distribute row values into columnar buffers
+                col_bufs = buffers[table]
+                for i, val in enumerate(row):
+                    col_bufs[i].append(val)
+
                 msg_count += 1
-                topic_counts[_TABLE_TO_TOPIC.get(table, "")] += 1
+                topic_counts[topic] += 1
 
             total_buffered += msg_count
 
@@ -619,7 +692,7 @@ def main() -> None:
 
             # ── Size-based flush ──
             if total_buffered >= BATCH_SIZE:
-                _flush_all_parallel(writer_pool, buffers, stats, flush_pool)
+                _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
                 consumer.commit(asynchronous=True)
                 total_buffered = 0
                 last_flush = time.monotonic()
@@ -627,7 +700,7 @@ def main() -> None:
 
             # ── Time-based flush ──
             if time.monotonic() - last_flush >= FLUSH_INTERVAL:
-                _flush_all_parallel(writer_pool, buffers, stats, flush_pool)
+                _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
                 consumer.commit(asynchronous=True)
                 total_buffered = 0
                 last_flush = time.monotonic()
@@ -636,13 +709,19 @@ def main() -> None:
         log.info("Interrupted.")
     finally:
         log.info("Draining remaining buffers …")
-        _flush_all_parallel(writer_pool, buffers, stats, flush_pool)
+        _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
+        # Wait for all pending flushes to complete before final commit
+        for fut, table, count in pending_futures:
+            try:
+                fut.result(timeout=60)
+            except Exception as exc:
+                log.error("Final flush %d rows → %s failed: %s", count, table, exc)
+        pending_futures.clear()
         try:
             consumer.commit(asynchronous=False)  # final commit is synchronous
         except Exception:
             pass
         consumer.close()
-        deser_pool.shutdown(wait=True, cancel_futures=False)
         flush_pool.shutdown(wait=True, cancel_futures=False)
         log.info("Consumer shut down cleanly.")
 

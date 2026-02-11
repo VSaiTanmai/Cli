@@ -36,7 +36,7 @@ for TOPIC in "${TOPICS[@]}"; do
     --replicas "${RF}" \
     --topic-config retention.ms="${RETENTION}" \
     --topic-config cleanup.policy=delete \
-    --topic-config compression.type=zstd \
+    --topic-config compression.type=producer \
     --topic-config max.message.bytes=10485760 \
     2>/dev/null && echo "✔" || echo "already exists ✔"
 done

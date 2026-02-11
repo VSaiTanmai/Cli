@@ -1,1 +1,12 @@
-﻿# Local env\n.env\n# Python artifacts\n__pycache__/\n*.pyc\n.DS_Store\n
+﻿# Local env
+.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS files
+.DS_Store
+Thumbs.db

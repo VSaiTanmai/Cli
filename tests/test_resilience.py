@@ -226,9 +226,9 @@ class TestClickHouseFailover:
         # Verify replica caught up
         time.sleep(10)
         try:
-            import clickhouse_connect
-            ch2_fresh = clickhouse_connect.get_client(
-                host="localhost", port=8124,
+            from conftest import ClickHouseClient
+            ch2_fresh = ClickHouseClient(
+                host="localhost", port=9001,
                 username="clif_admin", password="Cl1f_Ch@ngeM3_2026!",
                 database="clif_logs", connect_timeout=30,
             )
@@ -339,9 +339,9 @@ class TestConcurrentWritesDuringFailure:
 
         # 7. Verify replica caught up on node 2
         try:
-            import clickhouse_connect
-            ch2 = clickhouse_connect.get_client(
-                host="localhost", port=8124,
+            from conftest import ClickHouseClient
+            ch2 = ClickHouseClient(
+                host="localhost", port=9001,
                 username="clif_admin", password="Cl1f_Ch@ngeM3_2026!",
                 database="clif_logs", connect_timeout=30,
             )
@@ -369,6 +369,8 @@ class TestPostChaosStability:
             "clif-clickhouse01",
             "clif-clickhouse02",
             "clif-consumer",
+            "clif-consumer-2",
+            "clif-consumer-3",
             "clif-redpanda01",
             "clif-redpanda02",
             "clif-redpanda03",

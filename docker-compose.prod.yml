@@ -1,0 +1,53 @@
+# =============================================================================
+# CLIF Production Overrides
+# =============================================================================
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Removes local-PC resource caps and switches Redpanda to production mode.
+# =============================================================================
+
+services:
+  redpanda01:
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda01:9092,external://redpanda01:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda01:8082,external://redpanda01:18082
+      - --rpc-addr redpanda01:33145
+      - --advertise-rpc-addr redpanda01:33145
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --seeds redpanda01:33145
+      # Production: auto-detect cores and RAM
+      - --mode production
+      - --default-log-level=warn
+
+  redpanda02:
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr internal://redpanda02:9092,external://redpanda02:29092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
+      - --advertise-pandaproxy-addr internal://redpanda02:8082,external://redpanda02:28082
+      - --rpc-addr redpanda02:33145
+      - --advertise-rpc-addr redpanda02:33145
+      - --seeds redpanda01:33145
+      - --mode production
+      - --default-log-level=warn
+
+  redpanda03:
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:39092
+      - --advertise-kafka-addr internal://redpanda03:9092,external://redpanda03:39092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:38082
+      - --advertise-pandaproxy-addr internal://redpanda03:8082,external://redpanda03:38082
+      - --rpc-addr redpanda03:33145
+      - --advertise-rpc-addr redpanda03:33145
+      - --seeds redpanda01:33145
+      - --mode production
+      - --default-log-level=warn
