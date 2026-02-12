@@ -18,18 +18,23 @@ export async function GET(req: NextRequest) {
 
   try {
     const conditions: string[] = [];
+    const params: Record<string, string | number> = {};
     if (query) {
-      const escaped = query.replace(/'/g, "\\'");
-      conditions.push(`raw LIKE '%${escaped}%'`);
+      conditions.push(`position(lower(toString(*)), lower({q:String})) > 0`);
+      params.q = query;
     }
     if (severity) {
-      conditions.push(`severity >= ${Number(severity)}`);
+      const sev = Math.max(0, Math.min(4, Math.floor(Number(severity)) || 0));
+      conditions.push(`severity >= {sev:UInt8}`);
+      params.sev = sev;
     }
     if (timeFrom) {
-      conditions.push(`timestamp >= parseDateTimeBestEffort('${timeFrom}')`);
+      conditions.push(`timestamp >= parseDateTimeBestEffort({timeFrom:String})`);
+      params.timeFrom = timeFrom;
     }
     if (timeTo) {
-      conditions.push(`timestamp <= parseDateTimeBestEffort('${timeTo}')`);
+      conditions.push(`timestamp <= parseDateTimeBestEffort({timeTo:String})`);
+      params.timeTo = timeTo;
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -40,12 +45,14 @@ export async function GET(req: NextRequest) {
          FROM clif_logs.${safeTable}
          ${where}
          ORDER BY timestamp DESC
-         LIMIT ${limit} OFFSET ${offset}`
+         LIMIT ${limit} OFFSET ${offset}`,
+        params
       ),
       queryClickHouse<{ cnt: string }>(
         `SELECT count() AS cnt
          FROM clif_logs.${safeTable}
-         ${where}`
+         ${where}`,
+        params
       ),
     ]);
 

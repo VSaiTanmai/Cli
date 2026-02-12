@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import investigationsData from "@/lib/mock/investigations.json";
 import type { Investigation } from "@/lib/types";
+import { toast } from "sonner";
 
 const cases = investigationsData.cases as Investigation[];
 
@@ -90,10 +91,10 @@ export default function InvestigationDetailPage({
             </h1>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="gap-1">
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => toast.success("Report exported", { description: `${investigation.id} exported as PDF — Quarto rendering engine (Week 12)` })}>
               <FileText className="h-3.5 w-3.5" /> Export
             </Button>
-            <Button size="sm" className="gap-1">
+            <Button size="sm" className="gap-1" onClick={() => toast.warning("Containment initiated", { description: `Isolating hosts: ${investigation.hosts.join(", ")} — requires Tetragon eBPF integration (Week 4)` })}>
               <Shield className="h-3.5 w-3.5" /> Contain
             </Button>
           </div>

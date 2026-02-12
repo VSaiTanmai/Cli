@@ -7,15 +7,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { severityLabel, severityBgColor, timeAgo, formatNumber } from "@/lib/utils";
-import { Radio, Pause, Play, ArrowDown, Filter, RotateCcw } from "lucide-react";
+import { Radio, Pause, Play, ArrowDown, Filter, RotateCcw, Database } from "lucide-react";
 import type { EventRow } from "@/lib/types";
 
 const MAX_ROWS = 2000;
 
+const TABLE_OPTIONS = [
+  { value: "all", label: "All Tables" },
+  { value: "raw_logs", label: "Raw Logs" },
+  { value: "security_events", label: "Security" },
+  { value: "process_events", label: "Process" },
+  { value: "network_events", label: "Network" },
+];
+
+interface StreamEvent extends EventRow {
+  _table?: string;
+}
+
 export default function LiveFeedPage() {
-  const [events, setEvents] = useState<EventRow[]>([]);
+  const [events, setEvents] = useState<StreamEvent[]>([]);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("");
+  const [tableFilter, setTableFilter] = useState("all");
   const [autoScroll, setAutoScroll] = useState(true);
   const [totalReceived, setTotalReceived] = useState(0);
   const [rate, setRate] = useState(0);
@@ -26,10 +39,10 @@ export default function LiveFeedPage() {
   const fetchEvents = useCallback(async () => {
     if (paused) return;
     try {
-      const res = await fetch("/api/events/stream", { cache: "no-store" });
+      const res = await fetch(`/api/events/stream?table=${tableFilter}`, { cache: "no-store" });
       if (!res.ok) return;
       const json = await res.json();
-      const newEvents = (json.data ?? []) as EventRow[];
+      const newEvents = (json.data ?? []) as StreamEvent[];
       if (newEvents.length > 0) {
         setEvents((prev) => {
           const combined = [...newEvents, ...prev];
@@ -41,7 +54,7 @@ export default function LiveFeedPage() {
     } catch {
       // silent
     }
-  }, [paused]);
+  }, [paused, tableFilter]);
 
   useEffect(() => {
     fetchEvents();
@@ -99,7 +112,7 @@ export default function LiveFeedPage() {
 
       {/* Controls */}
       <Card>
-        <CardContent className="flex items-center gap-3 p-3">
+        <CardContent className="flex items-center gap-3 p-3 flex-wrap">
           <Button
             variant={paused ? "default" : "secondary"}
             size="sm"
@@ -125,6 +138,23 @@ export default function LiveFeedPage() {
             <ArrowDown className="h-3.5 w-3.5" />
             Auto-scroll {autoScroll ? "On" : "Off"}
           </Button>
+          <div className="flex items-center gap-1 border-l pl-3 ml-1">
+            <Database className="h-3.5 w-3.5 text-muted-foreground" />
+            {TABLE_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value}
+                variant={tableFilter === opt.value ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setTableFilter(opt.value);
+                  setEvents([]);
+                }}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
           <div className="relative flex-1 max-w-sm">
             <Filter className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -170,6 +200,9 @@ export default function LiveFeedPage() {
                   <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-[160px]">
                     Timestamp
                   </th>
+                  <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-[80px]">
+                    Table
+                  </th>
                   <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-[60px]">
                     Severity
                   </th>
@@ -187,7 +220,7 @@ export default function LiveFeedPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
                       {events.length === 0 ? (
                         <div className="space-y-2">
                           <Skeleton className="mx-auto h-3 w-48" />
@@ -214,6 +247,16 @@ export default function LiveFeedPage() {
                               fractionalSecondDigits: 3,
                             })
                           : "—"}
+                      </td>
+                      <td className="px-4 py-1.5">
+                        <span className={`inline-flex rounded-sm border px-1.5 py-0.5 text-[9px] font-medium ${
+                          event._table === "security_events" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                          event._table === "process_events" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                          event._table === "network_events" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                          "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                        }`}>
+                          {event._table?.replace("_events", "").replace("_logs", "") ?? "raw"}
+                        </span>
                       </td>
                       <td className="px-4 py-1.5">
                         {event.severity !== undefined ? (

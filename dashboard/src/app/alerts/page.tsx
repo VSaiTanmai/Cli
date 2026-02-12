@@ -50,11 +50,17 @@ export default function AlertsPage() {
   const [statusFilter, setStatusFilter] = useState<WorkflowState | "All">("All");
   const [selectedAlert, setSelectedAlert] = useState<number | null>(null);
 
-  // Assign mock workflow states to alerts
-  const alertsWithState = (data?.alerts ?? []).map((alert, idx) => ({
-    ...alert,
-    workflowState: (["New", "Acknowledged", "Investigating", "New", "Resolved"][idx % 5]) as WorkflowState,
-  }));
+  // Deterministic workflow states based on severity and timestamp hash
+  const alertsWithState = (data?.alerts ?? []).map((alert) => {
+    // Deterministic: severity 4 → New, 3 → Investigating, 2 → Acknowledged, else Resolved
+    const sev = alert.severity ?? 0;
+    let state: WorkflowState;
+    if (sev >= 4) state = "New";
+    else if (sev === 3) state = "Investigating";
+    else if (sev === 2) state = "Acknowledged";
+    else state = "Resolved";
+    return { ...alert, workflowState: state };
+  });
 
   const filtered =
     statusFilter === "All"

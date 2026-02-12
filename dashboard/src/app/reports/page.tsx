@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import reportsData from "@/lib/mock/reports.json";
 import type { ReportTemplate, Report } from "@/lib/types";
+import { toast } from "sonner";
 
 const templates = reportsData.templates as ReportTemplate[];
 const history = reportsData.history as Report[];
@@ -42,7 +43,7 @@ export default function ReportsPage() {
             AI-generated investigation reports and compliance documentation
           </p>
         </div>
-        <Button className="gap-1.5">
+        <Button className="gap-1.5" onClick={() => toast.info("Report generation", { description: "Select template and investigation — Quarto rendering engine (Week 12)" })}>
           <Plus className="h-4 w-4" /> Generate Report
         </Button>
       </div>
@@ -59,6 +60,7 @@ export default function ReportsPage() {
               <Card
                 key={tmpl.id}
                 className="cursor-pointer transition-colors hover:bg-muted/20"
+                onClick={() => toast.info(`${tmpl.name}`, { description: tmpl.description })}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
@@ -156,7 +158,7 @@ export default function ReportsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.success("Report downloaded", { description: `${report.title} — ${report.size}` })}>
                         <Download className="h-3.5 w-3.5" />
                       </Button>
                     </td>

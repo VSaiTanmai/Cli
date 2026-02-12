@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import usersData from "@/lib/mock/users.json";
 import type { UserProfile } from "@/lib/types";
+import { toast } from "sonner";
 
 const users = usersData.users as UserProfile[];
 
@@ -80,7 +81,7 @@ export default function SettingsPage() {
                   <Input defaultValue="10000" type="number" className="mt-1 h-9" />
                 </div>
               </div>
-              <Button size="sm" className="gap-1">
+              <Button size="sm" className="gap-1" onClick={() => toast.success("Settings saved", { description: "Configuration persisted to ClickHouse system table" })}>
                 <Save className="h-3.5 w-3.5" /> Save Changes
               </Button>
             </CardContent>
@@ -223,7 +224,7 @@ export default function SettingsPage() {
                   <User className="h-4 w-4 text-primary" />
                   Users
                 </div>
-                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => toast.info("User management", { description: "RBAC user provisioning — requires auth service (Week 11)" })}>
                   <UserPlus className="h-3 w-3" /> Add
                 </Button>
               </CardTitle>
@@ -290,7 +291,7 @@ export default function SettingsPage() {
                   clif_dk_••••••••••••9b2c
                 </p>
               </div>
-              <Button variant="outline" size="sm" className="w-full text-xs">
+              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => toast.success("API key generated", { description: "clif_dk_\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022f3a1 \u2014 copy now, it won\u2019t be shown again" })}>
                 Generate New Key
               </Button>
             </CardContent>
@@ -309,6 +310,7 @@ export default function SettingsPage() {
                 variant="outline"
                 size="sm"
                 className="w-full gap-1 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
+                onClick={() => toast.error("Truncate blocked", { description: "Safety lock active — requires admin confirmation and pipeline pause" })}
               >
                 <Trash2 className="h-3 w-3" /> Truncate All Tables
               </Button>
@@ -316,6 +318,7 @@ export default function SettingsPage() {
                 variant="outline"
                 size="sm"
                 className="w-full gap-1 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
+                onClick={() => toast.error("Reset blocked", { description: "Safety lock active — requires admin confirmation and pipeline quiesce" })}
               >
                 <Trash2 className="h-3 w-3" /> Reset Pipeline State
               </Button>

@@ -12,6 +12,8 @@ import {
   Clock,
   TrendingUp,
   Server,
+  Layers,
+  Shield,
 } from "lucide-react";
 import type { DashboardMetrics } from "@/lib/types";
 import {
@@ -102,7 +104,7 @@ export default function DashboardPage() {
     5000
   );
 
-  const uptime = "99.97%"; // Static for prototype
+  const uptime = data?.uptime ? `${data.uptime}%` : "—";
 
   const timelineData = (data?.eventsTimeline ?? []).map((d) => ({
     time: new Date(d.time).toLocaleTimeString("en-US", {
@@ -261,6 +263,91 @@ export default function DashboardPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Per-Table Breakdown + Evidence Chain */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Per-Table Event Counts */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Layers className="h-4 w-4 text-primary" />
+              Event Distribution by Table
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {[
+                  { key: "raw_logs", label: "Raw Logs", color: "bg-blue-500" },
+                  { key: "security_events", label: "Security Events", color: "bg-red-500" },
+                  { key: "process_events", label: "Process Events", color: "bg-amber-500" },
+                  { key: "network_events", label: "Network Events", color: "bg-emerald-500" },
+                ].map((t) => {
+                  const count = data?.tableCounts?.[t.key] ?? 0;
+                  const total = data?.totalEvents || 1;
+                  const pct = (count / total) * 100;
+                  return (
+                    <div key={t.key} className="flex items-center gap-3">
+                      <div className={`h-2 w-2 rounded-full ${t.color}`} />
+                      <span className="text-xs w-32 truncate">{t.label}</span>
+                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${t.color}/60 transition-all`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="text-xs tabular-nums text-muted-foreground w-20 text-right">
+                        {formatNumber(count)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Evidence Chain Status */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Shield className="h-4 w-4 text-emerald-400" />
+              Merkle Evidence Chain
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-xs text-muted-foreground">Anchor Batches</span>
+                  <span className="tabular-nums text-sm font-bold">{data?.evidenceBatches ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-xs text-muted-foreground">Events Anchored</span>
+                  <span className="tabular-nums text-sm font-bold">{formatNumber(data?.evidenceAnchored ?? 0)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                  <span className="text-xs text-emerald-400">Chain Integrity</span>
+                  <Badge variant="low" className="text-[10px]">
+                    {(data?.evidenceBatches ?? 0) > 0 ? "Verified" : "No Data"}
+                  </Badge>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -6,6 +6,11 @@ export interface DashboardMetrics {
   topSources: Array<{ source: string; count: number }>;
   severityDistribution: Array<{ severity: number; count: number }>;
   eventsTimeline: Array<{ time: string; count: number }>;
+  uptime?: string;
+  criticalAlertCount?: number;
+  tableCounts?: Record<string, number>;
+  evidenceBatches?: number;
+  evidenceAnchored?: number;
 }
 
 /* ── Generic event row ── */
@@ -89,11 +94,19 @@ export interface ThreatPattern {
 export interface EvidenceBatch {
   id: string;
   timestamp: string;
+  tableName: string;
+  timeFrom: string;
+  timeTo: string;
   eventCount: number;
   merkleRoot: string;
-  txId: string;
-  blockNumber: number;
+  merkleDepth: number;
+  s3Key: string;
+  s3VersionId: string;
   status: string;
+  prevMerkleRoot: string;
+  /* Legacy fields kept for mock fallback */
+  txId?: string;
+  blockNumber?: number;
 }
 
 export interface EvidenceSummary {

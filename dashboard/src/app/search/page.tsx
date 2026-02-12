@@ -17,6 +17,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { EventRow } from "@/lib/types";
+import { toast } from "sonner";
 
 const TABLES = [
   { value: "raw_logs", label: "Raw Logs" },
@@ -215,7 +216,29 @@ export default function SearchPage() {
                 {query && ` for "${query}"`}
               </span>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" className="gap-1 text-xs h-7">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 text-xs h-7"
+                  onClick={() => {
+                    if (results.length === 0) return;
+                    const headers = Object.keys(results[0]).join(",");
+                    const rows = results.map((r) =>
+                      Object.values(r)
+                        .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
+                        .join(",")
+                    );
+                    const csv = [headers, ...rows].join("\n");
+                    const blob = new Blob([csv], { type: "text/csv" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `clif-search-${table}-${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast.success(`Exported ${results.length} rows to CSV`);
+                  }}
+                >
                   <Download className="h-3 w-3" /> Export CSV
                 </Button>
               </div>

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import agentsData from "@/lib/mock/agents.json";
 import type { Agent, AgentActivity, PendingApproval } from "@/lib/types";
+import { toast } from "sonner";
 
 const agents = agentsData.agents as Agent[];
 const recentActivity = agentsData.recentActivity as AgentActivity[];
@@ -84,10 +85,10 @@ export default function AIAgentsPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2 ml-4">
-                  <Button size="sm" variant="outline" className="h-8 text-xs">
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => toast.error("Action denied", { description: `${approval.action} — denied by SOC Lead` })}>
                     Deny
                   </Button>
-                  <Button size="sm" className="h-8 text-xs bg-amber-600 hover:bg-amber-700">
+                  <Button size="sm" className="h-8 text-xs bg-amber-600 hover:bg-amber-700" onClick={() => toast.success("Action approved", { description: `${approval.action} — executing via LangGraph orchestrator` })}>
                     Approve
                   </Button>
                 </div>

@@ -9,6 +9,8 @@ import {
   Panel,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   MarkerType,
   type Node,
   type Edge,
@@ -296,7 +298,16 @@ const LEGEND = [
   { color: "#ef4444", label: "Critical Target / C2" },
 ];
 
-export default function AttackGraphPage() {
+function FitViewButton() {
+  const { fitView } = useReactFlow();
+  return (
+    <Button variant="outline" size="sm" className="gap-1" onClick={() => fitView({ padding: 0.15 })}>
+      <ZoomIn className="h-3.5 w-3.5" /> Fit View
+    </Button>
+  );
+}
+
+function AttackGraphInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES);
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -325,9 +336,7 @@ export default function AttackGraphPage() {
           <Button variant="outline" size="sm" className="gap-1" onClick={resetView}>
             <RefreshCcw className="h-3.5 w-3.5" /> Reset
           </Button>
-          <Button variant="outline" size="sm" className="gap-1">
-            <ZoomIn className="h-3.5 w-3.5" /> Fit View
-          </Button>
+          <FitViewButton />
         </div>
       </div>
 
@@ -456,5 +465,13 @@ export default function AttackGraphPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+export default function AttackGraphPage() {
+  return (
+    <ReactFlowProvider>
+      <AttackGraphInner />
+    </ReactFlowProvider>
   );
 }

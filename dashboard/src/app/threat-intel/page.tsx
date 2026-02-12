@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,11 @@ import {
   AlertTriangle,
   ExternalLink,
   Tag,
+  Activity,
 } from "lucide-react";
 import threatIntelData from "@/lib/mock/threat-intel.json";
 import type { IOC, ThreatPattern } from "@/lib/types";
+import { toast } from "sonner";
 
 const iocs = threatIntelData.iocs as IOC[];
 const threatPatterns = threatIntelData.threatPatterns as ThreatPattern[];
@@ -55,6 +57,23 @@ const SEVERITY_VARIANT: Record<number, "critical" | "high" | "medium" | "low" | 
 export default function ThreatIntelPage() {
   const [filter, setFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("All");
+  const [liveMitre, setLiveMitre] = useState<Array<{ technique: string; tactic: string; count: number; maxSeverity: number }>>([]);
+  const [liveIOCs, setLiveIOCs] = useState<Array<{ value: string; type: string; hits: number; maxSeverity: number }>>([]);
+
+  useEffect(() => {
+    async function fetchLive() {
+      try {
+        const res = await fetch("/api/threat-intel", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        setLiveMitre(json.mitreStats ?? []);
+        setLiveIOCs(json.topIOCs ?? []);
+      } catch { /* silent */ }
+    }
+    fetchLive();
+    const t = setInterval(fetchLive, 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const filteredIocs = iocs.filter((ioc) => {
     const matchesText =
@@ -75,10 +94,72 @@ export default function ThreatIntelPage() {
             IOC feeds, threat patterns, and MITRE ATT&CK mapping
           </p>
         </div>
-        <Button className="gap-1.5">
+        <Button className="gap-1.5" onClick={() => toast.info("IOC feed configuration", { description: "Connect MISP / AlienVault OTX feed — requires threat intel service (Week 7)" })}>
           <Radar className="h-4 w-4" /> Add IOC Feed
         </Button>
       </div>
+
+      {/* Live MITRE ATT&CK from ClickHouse */}
+      {liveMitre.length > 0 && (
+        <Card className="border-primary/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Activity className="h-4 w-4 text-primary" />
+              Live MITRE ATT&CK Detections (24h)
+              <Badge variant="outline" className="ml-1 tabular-nums text-[10px]">
+                {liveMitre.reduce((s, m) => s + m.count, 0)} total
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+              {liveMitre.slice(0, 8).map((m) => (
+                <div key={m.technique} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <Badge variant={m.maxSeverity >= 3 ? "critical" : m.maxSeverity >= 2 ? "high" : "medium"} className="text-[9px] font-mono">
+                      {m.technique}
+                    </Badge>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{m.tactic}</p>
+                  </div>
+                  <span className="text-sm font-bold tabular-nums">{m.count}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live IOC Matches */}
+      {liveIOCs.length > 0 && (
+        <Card className="border-amber-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <AlertTriangle className="h-4 w-4 text-amber-400" />
+              Active Threat Indicators (Last 24h)
+              <Badge variant="high" className="ml-1 tabular-nums text-[10px]">
+                {liveIOCs.length} hosts
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 md:grid-cols-3">
+              {liveIOCs.slice(0, 6).map((ioc) => (
+                <div key={ioc.value} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Server className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-mono text-xs">{ioc.value}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium tabular-nums ${ioc.maxSeverity >= 3 ? "text-red-400" : "text-amber-400"}`}>
+                      {ioc.hits} hits
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Threat Patterns */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">

@@ -18,6 +18,7 @@ import {
 import investigationsData from "@/lib/mock/investigations.json";
 import type { Investigation } from "@/lib/types";
 import { useState } from "react";
+import { toast } from "sonner";
 
 const cases = investigationsData.cases as Investigation[];
 
@@ -60,7 +61,7 @@ export default function InvestigationsPage() {
             Active and historical case files
           </p>
         </div>
-        <Button className="gap-1.5">
+        <Button className="gap-1.5" onClick={() => toast.info("Investigation wizard opening…", { description: "Requires LangGraph agent service (Week 10 milestone)" })}>
           <Plus className="h-4 w-4" />
           New Investigation
         </Button>

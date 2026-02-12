@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -24,6 +25,7 @@ export default function RootLayout({
           <TopBar />
           <main className="min-h-[calc(100vh-3.5rem)] p-6">{children}</main>
         </div>
+        <Toaster theme="dark" position="bottom-right" richColors closeButton />
       </body>
     </html>
   );
