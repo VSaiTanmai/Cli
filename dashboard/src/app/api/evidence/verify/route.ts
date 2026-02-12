@@ -60,6 +60,14 @@ export async function GET(request: Request) {
     );
   }
 
+  // Validate batchId format — prevent injection via malformed IDs
+  if (batchId.length > 128 || !/^[A-Za-z0-9_\-]+$/.test(batchId)) {
+    return NextResponse.json(
+      { error: "Invalid batchId format" },
+      { status: 400 }
+    );
+  }
+
   try {
     // Fetch the stored anchor record
     const anchorResult = await queryClickHouse<{

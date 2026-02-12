@@ -4,15 +4,23 @@ export const dynamic = "force-dynamic";
 
 const CH_HOST = process.env.CH_HOST || "localhost";
 const CH_PORT = process.env.CH_PORT || "8123";
-const CH_USER = process.env.CH_USER || "clif_admin";
-const CH_PASSWORD = process.env.CH_PASSWORD || "Cl1f_Ch@ngeM3_2026!";
+const PROM_URL = process.env.PROMETHEUS_URL || "http://localhost:9090";
+const PROM_TIMEOUT_MS = 8_000;
 
 async function fetchProm(query: string) {
-  const url = `${process.env.PROMETHEUS_URL || "http://localhost:9090"}/api/v1/query?query=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  const json = await res.json();
-  return json.data?.result ?? [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROM_TIMEOUT_MS);
+  try {
+    const url = `${PROM_URL}/api/v1/query?query=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { cache: "no-store", signal: controller.signal });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.data?.result ?? [];
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function checkHealth(url: string, timeout = 3000): Promise<boolean> {

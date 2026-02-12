@@ -34,32 +34,62 @@ export default function LiveFeedPage() {
   const [rate, setRate] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const rateCountRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  /** Track latest seen event_id to deduplicate across polls */
+  const seenIdsRef = useRef(new Set<string>());
 
-  // Poll for new events
+  // Poll for new events — deduplicating by event_id
   const fetchEvents = useCallback(async () => {
     if (paused) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const res = await fetch(`/api/events/stream?table=${tableFilter}`, { cache: "no-store" });
+      const res = await fetch(`/api/events/stream?table=${tableFilter}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
       if (!res.ok) return;
       const json = await res.json();
-      const newEvents = (json.data ?? []) as StreamEvent[];
-      if (newEvents.length > 0) {
+      const incoming = (json.data ?? []) as StreamEvent[];
+      if (incoming.length > 0) {
         setEvents((prev) => {
-          const combined = [...newEvents, ...prev];
+          // Deduplicate: only add events we haven't seen before
+          const fresh = incoming.filter((e) => {
+            const id = (e as Record<string, unknown>).event_id as string | undefined;
+            if (!id) return true; // No ID → always show (shouldn't happen)
+            if (seenIdsRef.current.has(id)) return false;
+            seenIdsRef.current.add(id);
+            return true;
+          });
+          if (fresh.length === 0) return prev;
+          const combined = [...fresh, ...prev];
+          // Cap seen set to prevent unbounded memory growth
+          if (seenIdsRef.current.size > MAX_ROWS * 2) {
+            const arr = Array.from(seenIdsRef.current);
+            seenIdsRef.current = new Set(arr.slice(arr.length - MAX_ROWS));
+          }
           return combined.slice(0, MAX_ROWS);
         });
-        setTotalReceived((p) => p + newEvents.length);
-        rateCountRef.current += newEvents.length;
+        const freshCount = incoming.length; // Approximate — actual dedup happens in setState
+        setTotalReceived((p) => p + freshCount);
+        rateCountRef.current += freshCount;
       }
-    } catch {
-      // silent
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // silent — network errors are transient
     }
   }, [paused, tableFilter]);
 
   useEffect(() => {
+    // Reset dedup set when table filter changes
+    seenIdsRef.current.clear();
     fetchEvents();
     const timer = setInterval(fetchEvents, 2000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      abortRef.current?.abort();
+    };
   }, [fetchEvents]);
 
   // Calculate rate

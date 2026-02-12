@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,20 +59,26 @@ export default function ThreatIntelPage() {
   const [typeFilter, setTypeFilter] = useState<string>("All");
   const [liveMitre, setLiveMitre] = useState<Array<{ technique: string; tactic: string; count: number; maxSeverity: number }>>([]);
   const [liveIOCs, setLiveIOCs] = useState<Array<{ value: string; type: string; hits: number; maxSeverity: number }>>([]);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     async function fetchLive() {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        const res = await fetch("/api/threat-intel", { cache: "no-store" });
+        const res = await fetch("/api/threat-intel", { cache: "no-store", signal: controller.signal });
         if (!res.ok) return;
         const json = await res.json();
         setLiveMitre(json.mitreStats ?? []);
         setLiveIOCs(json.topIOCs ?? []);
-      } catch { /* silent */ }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
     }
     fetchLive();
     const t = setInterval(fetchLive, 30_000);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); abortRef.current?.abort(); };
   }, []);
 
   const filteredIocs = iocs.filter((ioc) => {

@@ -3,24 +3,30 @@
 import { Search, Bell, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function TopBar() {
   const [alertCount, setAlertCount] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     async function fetchCount() {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        const res = await fetch("/api/metrics", { cache: "no-store" });
+        const res = await fetch("/api/metrics", { cache: "no-store", signal: controller.signal });
         if (!res.ok) return;
         const json = await res.json();
         setAlertCount(json.criticalAlertCount ?? 0);
-      } catch { /* silent */ }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
     }
     fetchCount();
     const t = setInterval(fetchCount, 30_000);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); abortRef.current?.abort(); };
   }, []);
 
   return (

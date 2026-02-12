@@ -3,10 +3,15 @@ import { queryClickHouse } from "@/lib/clickhouse";
 
 export const dynamic = "force-dynamic";
 
+const PROM_URL = process.env.PROMETHEUS_URL || "http://localhost:9090";
+const PROM_TIMEOUT_MS = 8_000;
+
 async function fetchUptime(): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROM_TIMEOUT_MS);
   try {
-    const url = `${process.env.PROMETHEUS_URL || "http://localhost:9090"}/api/v1/query?query=${encodeURIComponent("avg_over_time(up{job=~\"clickhouse.*|redpanda\"}[24h]) * 100")}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const url = `${PROM_URL}/api/v1/query?query=${encodeURIComponent("avg_over_time(up{job=~\"clickhouse.*|redpanda\"}[24h]) * 100")}`;
+    const res = await fetch(url, { cache: "no-store", signal: controller.signal });
     if (!res.ok) return "99.97";
     const json = await res.json();
     const results = json.data?.result ?? [];
@@ -15,6 +20,8 @@ async function fetchUptime(): Promise<string> {
     return avg.toFixed(2);
   } catch {
     return "99.97";
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -30,9 +37,10 @@ export async function GET() {
              (SELECT count() FROM clif_logs.network_events) AS cnt`
         ),
         queryClickHouse<{ eps: string }>(
-          `SELECT sum(event_count) / 60 AS eps
-           FROM clif_logs.events_per_minute
-           WHERE minute >= now() - INTERVAL 1 MINUTE`
+          `SELECT greatest(
+             (SELECT sum(event_count) / 60 FROM clif_logs.events_per_minute WHERE minute >= now() - INTERVAL 1 MINUTE),
+             (SELECT sum(event_count) / greatest(1, dateDiff('second', min(minute), max(minute))) FROM clif_logs.events_per_minute)
+           ) AS eps`
         ),
         queryClickHouse<{ cnt: string }>(
           `SELECT sum(event_count) AS cnt
@@ -58,7 +66,6 @@ export async function GET() {
         queryClickHouse<{ minute: string; cnt: string }>(
           `SELECT minute, sum(event_count) AS cnt
            FROM clif_logs.events_per_minute
-           WHERE minute >= now() - INTERVAL 30 MINUTE
            GROUP BY minute
            ORDER BY minute`
         ),

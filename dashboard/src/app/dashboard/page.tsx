@@ -174,7 +174,7 @@ export default function DashboardPage() {
               <Activity className="h-4 w-4 text-primary" />
               Events / Minute
               <span className="ml-auto text-xs text-muted-foreground">
-                Last 30 minutes
+                {timelineData.length > 0 ? `${timelineData.length} data points` : "Last 30 minutes"}
               </span>
             </CardTitle>
           </CardHeader>
