@@ -30,18 +30,19 @@ export async function GET(request: Request) {
   try {
     if (table === "all") {
       // Union latest events from all 4 tables with normalized columns
+      // Frontend expects: event_id, timestamp, log_source, hostname, severity, raw, _table
       const result = await queryClickHouse(
         `SELECT * FROM (
-           (SELECT toString(event_id) AS event_id, timestamp, source AS source, level AS category, message AS summary, 'raw_logs' AS _table
+           (SELECT toString(event_id) AS event_id, timestamp, source AS log_source, '' AS hostname, toNullable(toUInt8(0)) AS severity, message AS raw, 'raw_logs' AS _table
             FROM clif_logs.raw_logs ORDER BY timestamp DESC LIMIT 25)
            UNION ALL
-           (SELECT toString(event_id), timestamp, source, category, description, 'security_events'
+           (SELECT toString(event_id), timestamp, source, hostname, toNullable(severity), description, 'security_events'
             FROM clif_logs.security_events ORDER BY timestamp DESC LIMIT 25)
            UNION ALL
-           (SELECT toString(event_id), timestamp, hostname, binary_path, arguments, 'process_events'
+           (SELECT toString(event_id), timestamp, '' AS log_source, hostname, toNullable(toUInt8(is_suspicious)) AS severity, concat(binary_path, ' ', arguments) AS raw, 'process_events'
             FROM clif_logs.process_events ORDER BY timestamp DESC LIMIT 25)
            UNION ALL
-           (SELECT toString(event_id), timestamp, hostname, protocol, IPv4NumToString(dst_ip), 'network_events'
+           (SELECT toString(event_id), timestamp, protocol AS log_source, hostname, toNullable(toUInt8(is_suspicious)) AS severity, concat(IPv4NumToString(src_ip), ':', toString(src_port), ' → ', IPv4NumToString(dst_ip), ':', toString(dst_port), ' ', dns_query) AS raw, 'network_events'
             FROM clif_logs.network_events ORDER BY timestamp DESC LIMIT 25)
          ) AS combined
          ORDER BY timestamp DESC

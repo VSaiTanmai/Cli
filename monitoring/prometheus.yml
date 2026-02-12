@@ -1,10 +1,13 @@
 # =============================================================================
-# CLIF — Prometheus Configuration
+# CLIF — Prometheus Configuration (Production Grade)
 # =============================================================================
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   scrape_timeout: 10s
+  external_labels:
+    cluster: 'clif-siem'
+    environment: 'production'
 
 scrape_configs:
 
@@ -35,11 +38,31 @@ scrape_configs:
           - "redpanda03:9644"
     metrics_path: /public_metrics
 
-  # ── MinIO ────────────────────────────────────────────────────────────────
+  # ── MinIO Cluster ───────────────────────────────────────────────────────
   - job_name: "minio"
     static_configs:
       - targets: ["minio1:9000"]
     metrics_path: /minio/v2/metrics/cluster
+
+  # ── MinIO Node-level Metrics ─────────────────────────────────────────────
+  - job_name: "minio-node"
+    static_configs:
+      - targets: ["minio1:9000"]
+    metrics_path: /minio/v2/metrics/node
+
+  # ── Vector ──────────────────────────────────────────────────────────────
+  - job_name: "vector"
+    static_configs:
+      - targets: ["clif-vector:9598"]
+        labels:
+          service: "vector"
+    metrics_path: /metrics
+
+  # ── Grafana ─────────────────────────────────────────────────────────────
+  - job_name: "grafana"
+    static_configs:
+      - targets: ["grafana:3000"]
+    metrics_path: /metrics
 
   # ── Prometheus self ──────────────────────────────────────────────────────
   - job_name: "prometheus"

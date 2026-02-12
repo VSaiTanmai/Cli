@@ -6,3 +6,19 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: true
+    jsonData:
+      timeInterval: '15s'
+      httpMethod: POST
+
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    editable: true
+    jsonData:
+      host: clickhouse01
+      port: 8123
+      protocol: http
+      defaultDatabase: clif_logs
+      username: clif_admin
+    secureJsonData:
+      password: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}

@@ -1,0 +1,223 @@
+{
+  "benchmark": "CLIF Enterprise SIEM Benchmark v1.0",
+  "timestamp": "2026-02-12 20:20:54 UTC",
+  "total_duration_sec": 41.51,
+  "profile": {
+    "events": 500000,
+    "duration": 60,
+    "burst_events": 200000,
+    "latency_probes": 200,
+    "concurrent_queries": 8,
+    "description": "Standard benchmark (500K events, 60s sustained)"
+  },
+  "infrastructure": {
+    "redpanda": "3-broker, 12 partitions, RF=3",
+    "clickhouse": "2-node replicated shard + Keeper",
+    "vector": "v0.42.0, 4GB, 7 sources, 4 sinks",
+    "consumers": "3x Python, HA failover",
+    "minio": "3-node erasure coding",
+    "containers": 17
+  },
+  "results": {
+    "sustained": {
+      "total_produced": 500000,
+      "total_delivered": 500000,
+      "total_errors": 0,
+      "duration_sec": 12.15,
+      "avg_eps": 41138,
+      "min_eps": 37106,
+      "max_eps": 46245,
+      "p50_eps": 40692,
+      "p95_eps": 37106,
+      "std_dev_eps": 2603,
+      "checksum_count": 500000
+    },
+    "burst": {
+      "burst_events": 200000,
+      "delivered": 200000,
+      "errors": 0,
+      "duration_sec": 4.49,
+      "burst_eps": 44514,
+      "data_loss_pct": 0.0
+    },
+    "latency": {
+      "probes_sent": 200,
+      "probes_found": 200,
+      "probes_missing": 0,
+      "completion_pct": 100.0,
+      "avg_latency_sec": 6.662,
+      "min_latency_sec": 0.868,
+      "max_latency_sec": 12.598,
+      "p50_latency_sec": 6.826,
+      "p95_latency_sec": 11.895,
+      "p99_latency_sec": 12.499,
+      "poll_rounds": 5
+    },
+    "queries": {
+      "total_queries": 16,
+      "successful_queries": 15,
+      "failed_queries": 1,
+      "total_time_ms": 1044.7,
+      "avg_time_ms": 69.6,
+      "median_time_ms": 65.6,
+      "p95_time_ms": 160.9,
+      "max_time_ms": 160.9,
+      "slowest_query": "Network top talkers",
+      "queries_under_100ms": 14,
+      "queries_under_500ms": 15,
+      "detail": [
+        {
+          "query": "Total events (24h)",
+          "time_ms": 48.3,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Events by source (24h)",
+          "time_ms": 52.2,
+          "rows": 11,
+          "status": "OK"
+        },
+        {
+          "query": "Events by level (24h)",
+          "time_ms": 70.1,
+          "rows": 4,
+          "status": "OK"
+        },
+        {
+          "query": "Events per minute (1h)",
+          "time_ms": 63.1,
+          "rows": 3,
+          "status": "OK"
+        },
+        {
+          "query": "High severity events (7d)",
+          "time_ms": 63.2,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Top attacked users (24h)",
+          "time_ms": 65.6,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Attack technique dist",
+          "time_ms": 62.8,
+          "rows": 12,
+          "status": "OK"
+        },
+        {
+          "query": "AI high-confidence alerts",
+          "time_ms": 60.3,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Network top talkers",
+          "time_ms": 160.9,
+          "rows": 10,
+          "status": "OK"
+        },
+        {
+          "query": "Geo distribution",
+          "time_ms": 17.2,
+          "rows": 2,
+          "status": "OK"
+        },
+        {
+          "query": "Suspicious connections",
+          "time_ms": 67.9,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Suspicious processes (7d)",
+          "time_ms": 77.1,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Process by hostname",
+          "time_ms": 83.2,
+          "rows": 10,
+          "status": "OK"
+        },
+        {
+          "query": "Full-text: auth failed",
+          "time_ms": 80.8,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Full-text: powershell",
+          "time_ms": 71.8,
+          "rows": 1,
+          "status": "OK"
+        },
+        {
+          "query": "Cross-table: suspicious IPs",
+          "time_ms": -1,
+          "rows": 0,
+          "status": "ERROR: Received ClickHouse exception, code: 386, server response: C"
+        }
+      ]
+    },
+    "concurrent": {
+      "concurrent_queries": 8,
+      "successful": 7,
+      "failed": 1,
+      "total_wall_time_ms": 408.2,
+      "avg_latency_ms": 96.1,
+      "p50_latency_ms": 66.5,
+      "p95_latency_ms": 269.7,
+      "max_latency_ms": 269.7,
+      "qps": 17.1
+    },
+    "resources": {
+      "containers": 17,
+      "total_memory_mb": 3911.3,
+      "memory_per_eps_mb": 0.0951,
+      "eps_per_gb_memory": 10770.0
+    },
+    "lag": {
+      "topics": {
+        "raw-logs": {
+          "partitions": 1,
+          "total_lag": 0
+        },
+        "security-events": {
+          "partitions": 1,
+          "total_lag": 0
+        },
+        "process-events": {
+          "partitions": 0,
+          "total_lag": 0,
+          "error": "KafkaError{code=_UNKNOWN_PARTITION,val=-190,str=\"Failed to get watermark offsets: Local: Unknown partition\"}"
+        },
+        "network-events": {
+          "partitions": 0,
+          "total_lag": 0,
+          "error": "KafkaError{code=_UNKNOWN_PARTITION,val=-190,str=\"Failed to get watermark offsets: Local: Unknown partition\"}"
+        }
+      },
+      "total_lag": 0,
+      "backpressure_detected": false
+    },
+    "integrity": {
+      "expected": 700000,
+      "found": 350129,
+      "data_loss": 349871,
+      "data_loss_pct": 49.9816,
+      "verification_time_sec": 7.29,
+      "table_counts": {
+        "raw_logs": 105273,
+        "security_events": 244856,
+        "process_events": 0,
+        "network_events": 0
+      },
+      "zero_loss": false
+    }
+  }
+}

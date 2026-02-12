@@ -2,12 +2,19 @@
 # CLIF Production Overrides
 # =============================================================================
 # Usage:
-#   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# Removes local-PC resource caps and switches Redpanda to production mode.
+# The base docker-compose.yml is already production-grade. This overlay
+# provides additional hardening for bare-metal / cloud deployments:
+#   • Higher resource ceilings for dedicated hardware
+#   • Stricter logging rotation
+#   • Prometheus TSDB tuning for long retention
+#   • Network sysctls for high-throughput
 # =============================================================================
 
 services:
+
+  # ── Redpanda: auto-detect hardware, no explicit --smp/--memory ───────────
   redpanda01:
     command:
       - redpanda
@@ -20,9 +27,21 @@ services:
       - --advertise-rpc-addr redpanda01:33145
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --seeds redpanda01:33145
-      # Production: auto-detect cores and RAM
       - --mode production
       - --default-log-level=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   redpanda02:
     command:
@@ -37,6 +56,19 @@ services:
       - --seeds redpanda01:33145
       - --mode production
       - --default-log-level=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   redpanda03:
     command:
@@ -51,3 +83,122 @@ services:
       - --seeds redpanda01:33145
       - --mode production
       - --default-log-level=warn
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── ClickHouse: higher limits for dedicated hardware ─────────────────────
+  clickhouse01:
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+        reservations:
+          cpus: '4'
+          memory: 8G
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  clickhouse02:
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+        reservations:
+          cpus: '4'
+          memory: 8G
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ── Vector: higher memory ceiling for sustained throughput ────────────────
+  clif-vector:
+    environment:
+      VECTOR_THREADS: 8
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 8G
+        reservations:
+          cpus: '4'
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Consumers: more flush workers for dedicated hardware ─────────────────
+  clif-consumer:
+    environment:
+      CONSUMER_FLUSH_WORKERS: 8
+      CONSUMER_BATCH_SIZE: 500000
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  clif-consumer-2:
+    environment:
+      CONSUMER_FLUSH_WORKERS: 8
+      CONSUMER_BATCH_SIZE: 500000
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  clif-consumer-3:
+    environment:
+      CONSUMER_FLUSH_WORKERS: 8
+      CONSUMER_BATCH_SIZE: 500000
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  # ── Prometheus: longer retention for production ──────────────────────────
+  prometheus:
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=90d"
+      - "--storage.tsdb.retention.size=50GB"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G

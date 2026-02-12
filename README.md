@@ -83,6 +83,48 @@
 
 ---
 
+## Implementation Status
+
+| Layer | Component | Status | Details |
+|-------|-----------|--------|---------|
+| **Collection** | Tetragon (eBPF) | 🔲 Planned | Kernel-level process/network/file telemetry |
+| **Collection** | Vector (aggregator) | ✅ Live | Syslog/HTTP/Docker/File → CCS → Redpanda |
+| **Streaming** | Redpanda (3-node) | ✅ Live | 205K produce EPS, zero message loss |
+| **Ingestion** | Python Consumers (×3) | ✅ Live | 78K+ E2E EPS, columnar inserts |
+| **Storage** | ClickHouse (2-node) | ✅ Live | <200ms queries, 15-20x ZSTD compression |
+| **Cold Storage** | MinIO (3-node) | ✅ Live | S3-compatible, erasure coded |
+| **Evidence** | Merkle Service | ✅ Live | SHA-256 trees, S3 Object Lock proofs |
+| **Vector Store** | LanceDB | 🔲 Planned | Semantic search & RAG for agents |
+| **Intelligence** | Triage Agent | 🔲 Planned | SQL rules + DSPy classifier |
+| **Intelligence** | Hunter Agent | 🔲 Planned | Context assembly, graph walk, similarity search |
+| **Intelligence** | Verifier Agent | 🔲 Planned | IOC validation, Merkle proof verification |
+| **Intelligence** | Reporter Agent | 🔲 Planned | LLM reports, MITRE mapping, SOAR actions |
+| **Dashboard** | Next.js 14 (12 pages) | ⚠️ Mixed | 6 real, 2 partial, 5 mock |
+| **Monitoring** | Prometheus + Grafana | ✅ Live | Full infrastructure scrape coverage |
+| **Auth** | RBAC / NextAuth.js | 🔲 Planned | No authentication currently |
+
+---
+
+## The Multi-Agent Intelligence Pipeline
+
+CLIF's core differentiator: four specialized AI agents that autonomously detect, investigate, verify, and report security threats.
+
+```
+Event Stream → Triage → Hunter → Verifier → Reporter → Action
+               (Filter)  (Investigate)  (Judge)    (Communicate)
+```
+
+| Agent | Role | Input | Output |
+|-------|------|-------|--------|
+| **Triage** | Noise reduction — filters 100% of events down to <1% signals | Redpanda stream + SQL rules | `Signal` (confidence > 70%) |
+| **Hunter** | Context assembly — expands entities ±15min, similarity search, graph walk | `Signal` + ClickHouse + LanceDB | `EnrichedFinding` |
+| **Verifier** | Fact-checking — validates IOCs via VirusTotal/AbuseIPDB, verifies Merkle proofs | `EnrichedFinding` + Threat Intel APIs | `ConfirmedIncident` or `FP` |
+| **Reporter** | Communication — generates MITRE-mapped reports, triggers SOAR actions | `ConfirmedIncident` | Markdown report + Slack/PagerDuty |
+
+**Tech Stack:** Python AsyncIO + DSPy (LLM orchestration) + LanceDB (RAG) + PostgreSQL (agent state)
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -217,69 +259,78 @@ python tests/performance_test.py --events 1000000 --rate 100000 --duration 60
 
 ```
 CLIF/
-├── docker-compose.yml              # Full infrastructure stack
-├── docker-compose.prod.yml         # Production overrides (auto-detect resources)
+├── docker-compose.yml              # Full infrastructure (19 services)
+├── docker-compose.prod.yml         # Production overrides
 ├── .env.example                    # Environment variable template
 ├── .env                            # Local environment (git-ignored)
 ├── pytest.ini                      # Pytest configuration
 ├── README.md                       # This file
+├── CLIF_PROJECT_REPORT.md          # Detailed project report (all layers)
+├── INDUSTRY_GAP_ANALYSIS.md        # Gap analysis vs Splunk/Elastic/Sentinel
+├── implementation_plan.md          # Agentic SIEM transformation roadmap
 │
 ├── dashboard/                      # SOC Dashboard (Next.js 14)
-│   ├── src/app/                    # 12 page routes + 4 API routes
-│   │   ├── dashboard/              # Overview KPIs, charts, tables
-│   │   ├── live-feed/              # Real-time event stream (2s polling)
-│   │   ├── search/                 # Full-text search with filters
-│   │   ├── alerts/                 # Alert queue with workflow states
-│   │   ├── investigations/         # Case management + detail views
-│   │   ├── attack-graph/           # React Flow threat visualization
-│   │   ├── ai-agents/              # AI agent cards + approval queue
-│   │   ├── threat-intel/           # IOCs, patterns, MITRE mappings
-│   │   ├── evidence/               # Blockchain chain-of-custody
-│   │   ├── reports/                # Report templates & history
-│   │   ├── system/                 # Real-time service health (Prometheus)
-│   │   ├── settings/               # Configuration & user management
+│   ├── src/app/                    # 12 page routes + API routes
+│   │   ├── page.tsx                # Overview (✅ real)
+│   │   ├── dashboard/              # KPIs, charts, tables (✅ real)
+│   │   ├── live-feed/              # Real-time event stream (✅ real)
+│   │   ├── search/                 # Full-text search (✅ real)
+│   │   ├── alerts/                 # Alert queue (⚠️ partial)
+│   │   ├── system/                 # Service health (✅ real)
+│   │   ├── threat-intel/           # MITRE + IOCs (⚠️ partial)
+│   │   ├── evidence/               # Merkle chain (⚠️ partial)
+│   │   ├── ai-agents/              # Agent dashboard (❌ mock)
+│   │   ├── investigations/         # Case management (❌ mock)
+│   │   ├── attack-graph/           # React Flow graph (❌ mock)
+│   │   ├── reports/                # Compliance reports (❌ mock)
+│   │   ├── settings/               # User management (❌ mock)
 │   │   └── api/                    # Backend API routes
 │   │       ├── metrics/            # ClickHouse aggregation queries
-│   │       ├── events/stream/      # Live event polling endpoint
+│   │       ├── events/             # Live event polling endpoint
 │   │       ├── alerts/             # Alert management
-│   │       └── system/             # Prometheus + direct health checks
+│   │       ├── evidence/           # Merkle service integration
+│   │       ├── threat-intel/       # MITRE data queries
+│   │       └── system/             # Prometheus + direct health
 │   ├── src/components/             # Sidebar, TopBar, shadcn/ui
 │   ├── src/lib/                    # ClickHouse, Prometheus, Redpanda clients
+│   │   └── mock/                   # 6 mock JSON files (to be replaced)
 │   ├── src/hooks/                  # usePolling custom hook
 │   ├── package.json
 │   └── tailwind.config.ts
 │
 ├── clickhouse/
-│   ├── schema.sql                  # All table definitions + MVs
+│   ├── schema.sql                  # 267 lines — 4 tables + 2 MVs
 │   ├── keeper_config.xml           # ClickHouse Keeper config
 │   ├── node01_config.xml           # Node 1 cluster + macros
 │   ├── node02_config.xml           # Node 2 cluster + macros
 │   ├── users.xml                   # User profiles, quotas, async_insert
 │   └── storage_policy.xml          # Tiered storage (local → S3)
 │
+├── consumer/
+│   ├── app.py                      # 731 lines — Redpanda → ClickHouse pipeline
+│   ├── requirements.txt            # Python dependencies
+│   └── Dockerfile                  # Consumer container image
+│
+├── merkle-service/
+│   └── merkle_anchor.py            # 475 lines — SHA-256 evidence chains
+│
 ├── redpanda/
 │   ├── topics.sh                   # Manual topic creation script
 │   └── console-config.yml          # Redpanda Console config
 │
-├── consumer/
-│   ├── app.py                      # Redpanda → ClickHouse pipeline
-│   ├── requirements.txt            # Python dependencies
-│   └── Dockerfile                  # Consumer container image
-│
 ├── tests/
-│   ├── conftest.py                 # Shared pytest fixtures & CH wrapper
-│   ├── test_infrastructure.py      # Cluster health, schema, config tests
-│   ├── test_data_integrity.py      # E2E pipeline validation tests
+│   ├── conftest.py                 # Shared pytest fixtures
+│   ├── test_infrastructure.py      # Cluster health, schema validation
+│   ├── test_data_integrity.py      # E2E pipeline validation
 │   ├── test_performance.py         # Throughput & query benchmarks
-│   ├── test_resilience.py          # Fault tolerance tests (destructive)
-│   ├── realistic_load_test.py      # LANL-format 1M event load test
+│   ├── test_resilience.py          # Fault tolerance (destructive)
+│   ├── realistic_load_test.py      # LANL-format 1M event simulation
 │   ├── performance_test.py         # Legacy standalone benchmark
-│   ├── resilience_test.sh          # Legacy bash resilience test
 │   └── requirements.txt            # Test dependencies
 │
 └── monitoring/
-    ├── prometheus.yml              # Prometheus scrape config
-    ├── grafana-dashboard.json      # Pre-built Grafana dashboard
+    ├── prometheus.yml              # Scrape config (CH, RP, MinIO)
+    ├── grafana-dashboard.json      # Pre-built overview dashboard
     ├── grafana-datasources.yml     # Prometheus data source
     └── grafana-dashboards.yml      # Dashboard provisioning
 ```
@@ -382,31 +433,45 @@ docker-compose down
 
 ## Dashboard Pages
 
-| Page | Route | Data Source | Description |
-|------|-------|-------------|-------------|
-| Dashboard | `/dashboard` | ClickHouse | KPI cards, event trend chart, severity distribution, top sources |
-| Live Feed | `/live-feed` | ClickHouse (2s poll) | Real-time event stream with pause/filter/auto-scroll |
-| Search | `/search` | ClickHouse | Full-text search across all tables, time/severity filters, CSV export |
-| Alerts | `/alerts` | ClickHouse | Alert queue with New/Acknowledged/Investigating/Resolved workflow |
-| Investigations | `/investigations` | Mock JSON | Case list with status, severity, MITRE ATT&CK tags |
-| Attack Graph | `/attack-graph` | Mock JSON | React Flow canvas — lateral movement, DNS tunneling, PowerShell chains |
-| AI Agents | `/ai-agents` | Mock JSON | 5 agent cards (Triage/Hunter/Verifier/Escalation/Reporter), approvals |
-| Threat Intel | `/threat-intel` | Mock JSON | IOC table with type/confidence/MITRE, threat pattern cards |
-| Evidence | `/evidence` | Mock JSON | Blockchain chain-of-custody, Merkle roots, batch history |
-| Reports | `/reports` | Mock JSON | Report templates & historical reports |
-| System Health | `/system` | Prometheus + Direct | Real-time service status for all infrastructure components |
-| Settings | `/settings` | Static | Config, data sources, notifications, integrations, users, API keys |
+| Page | Route | Data Source | Status | Description |
+|------|-------|-------------|--------|-------------|
+| Overview | `/` | ClickHouse | ✅ Real | KPI cards, event trends, severity distribution |
+| Live Feed | `/live-feed` | ClickHouse (2s poll) | ✅ Real | Real-time event stream with pause/filter |
+| Search | `/search` | ClickHouse | ✅ Real | Full-text search, time/severity filters, CSV export |
+| Alerts | `/alerts` | ClickHouse | ⚠️ Partial | Real data, client-side workflow state (not persisted) |
+| Dashboard | `/dashboard` | ClickHouse | ✅ Real | Aggregation charts, top sources |
+| System Health | `/system` | Prometheus + Direct | ✅ Real | All infrastructure service status |
+| Threat Intel | `/threat-intel` | ClickHouse + Mock | ⚠️ Partial | MITRE data real, IOC table mock |
+| Evidence | `/evidence` | Merkle + Mock | ⚠️ Partial | Partial mock data |
+| AI Agents | `/ai-agents` | `mock/agents.json` | ❌ Mock | Agent cards & approval queue |
+| Investigations | `/investigations` | `mock/investigations.json` | ❌ Mock | Case list with MITRE tags |
+| Attack Graph | `/attack-graph` | Hardcoded nodes | ❌ Mock | React Flow visualization |
+| Reports | `/reports` | `mock/reports.json` | ❌ Mock | Report templates |
+| Settings | `/settings` | `mock/users.json` | ❌ Mock | User management |
 
 ---
 
-## Next Steps (Week 2+)
+## Next Steps
 
-- **Week 2**: Tetragon eBPF integration → events flow into `process_events` and `network_events`
-- **Week 3**: Data quality framework, query optimization, full-text search improvements
-- **Week 4**: Exonum blockchain anchoring — `anchor_tx_id` columns get populated
-- **Week 5**: LanceDB vector embeddings for semantic log search
-- **Week 6**: DSPy anomaly detection consuming from these tables
+See [implementation_plan.md](implementation_plan.md) for the full 8-week roadmap.
+
+| Phase | Timeline | Focus |
+|-------|----------|-------|
+| **Phase 1: Foundation** | Weeks 1-2 | Tetragon/Vector deployment, CLIF Common Schema, LanceDB + Postgres setup, RBAC |
+| **Phase 2: Agent Core** | Weeks 3-5 | Triage SQL rules + DSPy classifier, Hunter graph queries, Verifier threat intel APIs, agent orchestration |
+| **Phase 3: Integration** | Weeks 6-7 | Wire mock dashboard pages to real backends, SSE streaming, Reporter LLM reports, notification hooks |
+| **Phase 4: Battle Testing** | Week 8 | LANL dataset red team simulation, DSPy prompt tuning, operational runbooks |
 
 ---
 
-*CLIF Stage 3 — Storage + SOC Dashboard — v2.0*
+## Related Docs
+
+| Document | Description |
+|----------|-------------|
+| [CLIF_PROJECT_REPORT.md](CLIF_PROJECT_REPORT.md) | Full layer-by-layer project report |
+| [INDUSTRY_GAP_ANALYSIS.md](INDUSTRY_GAP_ANALYSIS.md) | 22-gap comparison vs Splunk/Elastic/Sentinel/CrowdStrike |
+| [implementation_plan.md](implementation_plan.md) | Agentic SIEM transformation roadmap |
+
+---
+
+*CLIF — Cognitive Log Investigation Framework — v3.0*

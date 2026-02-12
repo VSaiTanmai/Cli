@@ -19,6 +19,7 @@ Production-grade consumer with:
 Environment variables:
     KAFKA_BROKERS               comma-separated broker list
     CLICKHOUSE_HOST             ClickHouse native TCP host
+    CLICKHOUSE_ALT_HOSTS        HA failover hosts (comma-separated host:port)
     CLICKHOUSE_PORT             ClickHouse native TCP port (9000)
     CLICKHOUSE_USER             ClickHouse username
     CLICKHOUSE_PASSWORD         ClickHouse password
@@ -63,6 +64,7 @@ except ImportError:
 
 KAFKA_BROKERS = os.getenv("KAFKA_BROKERS", "redpanda01:9092")
 CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "clickhouse01")
+CLICKHOUSE_ALT_HOSTS = os.getenv("CLICKHOUSE_ALT_HOSTS", "")  # HA failover: comma-separated host:port
 CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", "9000"))
 CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "clif_admin")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "clif_secure_password_change_me")
@@ -326,6 +328,7 @@ class ClickHouseWriter:
                     user=CLICKHOUSE_USER,
                     password=CLICKHOUSE_PASSWORD,
                     database=CLICKHOUSE_DB,
+                    alt_hosts=CLICKHOUSE_ALT_HOSTS if CLICKHOUSE_ALT_HOSTS else None,
                     connect_timeout=30,
                     send_receive_timeout=120,
                     compression='lz4',  # LZ4 wire compression
