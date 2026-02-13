@@ -28,6 +28,7 @@ volumes:
   vector_data:
   prometheus_data:
   grafana_data:
+  lancedb_data:
 
 # ── Services ─────────────────────────────────────────────────────────────────
 services:
@@ -439,7 +440,6 @@ services:
         mc mb --ignore-existing clif/${MINIO_BUCKET_COLD:-clif-cold-logs};
         mc mb --ignore-existing clif/${MINIO_BUCKET_BACKUPS:-clif-backups};
         mc mb --ignore-existing clif/${MINIO_BUCKET_EVIDENCE:-clif-evidence-archive};
-        mc anonymous set download clif/${MINIO_BUCKET_COLD:-clif-cold-logs};
         echo 'MinIO buckets initialised.';
       "
     environment:
@@ -691,6 +691,7 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -794,3 +795,47 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
+
+  # =========================================================================
+  # LanceDB — Semantic Vector Search & RAG Engine
+  # =========================================================================
+  lancedb:
+    container_name: clif-lancedb
+    build:
+      context: ./lancedb-service
+      dockerfile: Dockerfile
+    environment:
+      LANCEDB_PATH: /data/lancedb
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      EMBEDDING_BATCH_SIZE: 256
+      EMBEDDING_DIM: 384
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      SYNC_INTERVAL_SEC: 30
+      SYNC_BATCH_SIZE: 1000
+      API_HOST: 0.0.0.0
+      API_PORT: 8100
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: "http://localhost:3001,http://clif-dashboard:3001"
+    ports:
+      - "8100:8100"
+    volumes:
+      - lancedb_data:/data/lancedb
+    depends_on:
+      clickhouse01:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-frontend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 1G

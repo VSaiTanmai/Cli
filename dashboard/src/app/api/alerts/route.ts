@@ -21,7 +21,7 @@ const ALERT_COLUMNS = [
 ].join(", ");
 
 export async function GET(request: Request) {
-  const rateLimited = checkRateLimit(getClientId(request), { maxTokens: 30, refillRate: 2 });
+  const rateLimited = checkRateLimit(getClientId(request), { maxTokens: 30, refillRate: 2 }, "/api/alerts");
   if (rateLimited) return rateLimited;
 
   try {

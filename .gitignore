@@ -1,11 +1,16 @@
 ﻿# Local env
 .env
+.env.local
+.env.production
 
 # Python artifacts
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+*.egg-info/
+dist/
+build/
 
 # Node / Next.js
 node_modules/
@@ -14,7 +19,24 @@ out/
 dashboard/.next/
 dashboard/node_modules/
 
+# Data volumes (never commit)
+data/
+lancedb-data/
+*.db
+
+# Docker volumes
+docker-volumes/
+
 # OS files
 .DS_Store
 Thumbs.db
+
+# Benchmark/test outputs
+benchmark_results/
+*.log
+
+# IDE
+.vscode/settings.json
+.idea/
+
 INDUSTRY_GAP_ANALYSIS.md

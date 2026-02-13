@@ -37,7 +37,7 @@ async function fetchUptime(): Promise<string> {
 
 export async function GET(request: Request) {
   // Rate limiting
-  const rateLimited = checkRateLimit(getClientId(request), { maxTokens: 30, refillRate: 2 });
+  const rateLimited = checkRateLimit(getClientId(request), { maxTokens: 30, refillRate: 2 }, "/api/metrics");
   if (rateLimited) return rateLimited;
 
   try {
@@ -54,7 +54,8 @@ export async function GET(request: Request) {
           queryClickHouse<{ eps: string }>(
             `SELECT greatest(
                (SELECT sum(event_count) / 60 FROM clif_logs.events_per_minute WHERE minute >= now() - INTERVAL 1 MINUTE),
-               (SELECT sum(event_count) / greatest(1, dateDiff('second', min(minute), max(minute))) FROM clif_logs.events_per_minute)
+               (SELECT sum(event_count) / greatest(1, dateDiff('second', min(minute), max(minute)))
+                FROM clif_logs.events_per_minute WHERE minute >= now() - INTERVAL 5 MINUTE)
              ) AS eps`
           ),
           queryClickHouse<{ cnt: string }>(

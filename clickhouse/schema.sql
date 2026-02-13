@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS clif_logs.network_events ON CLUSTER 'clif_cluster'
 
     INDEX idx_src_ip    src_ip      TYPE minmax              GRANULARITY 4,
     INDEX idx_dst_ip    dst_ip      TYPE minmax              GRANULARITY 4,
-    INDEX idx_dst_port  dst_port    TYPE set(65536)          GRANULARITY 4,
+    INDEX idx_dst_port  dst_port    TYPE minmax               GRANULARITY 4,
     INDEX idx_protocol  protocol    TYPE set(20)             GRANULARITY 4,
     INDEX idx_dns       dns_query   TYPE tokenbf_v1(10240, 2, 0) GRANULARITY 1,
     INDEX idx_container container_id TYPE bloom_filter(0.01)  GRANULARITY 4
@@ -264,3 +264,78 @@ SELECT
     count() AS event_count
 FROM clif_logs.security_events
 GROUP BY hour, category, severity;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 6. Additional MVs — cover all 4 tables for events_per_minute
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Security events → events_per_minute
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_minute_security_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_minute
+AS
+SELECT
+    toStartOfMinute(timestamp) AS minute,
+    source,
+    category AS level,
+    count() AS event_count
+FROM clif_logs.security_events
+GROUP BY minute, source, level;
+
+-- Process events → events_per_minute
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_minute_process_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_minute
+AS
+SELECT
+    toStartOfMinute(timestamp) AS minute,
+    'process' AS source,
+    if(is_suspicious = 1, 'SUSPICIOUS', 'NORMAL') AS level,
+    count() AS event_count
+FROM clif_logs.process_events
+GROUP BY minute, source, level;
+
+-- Network events → events_per_minute
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_minute_network_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_minute
+AS
+SELECT
+    toStartOfMinute(timestamp) AS minute,
+    protocol AS source,
+    direction AS level,
+    count() AS event_count
+FROM clif_logs.network_events
+GROUP BY minute, source, level;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 7. evidence_anchors — Merkle tree anchor records for forensic integrity
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clif_logs.evidence_anchors ON CLUSTER 'clif_cluster'
+(
+    batch_id          String                                     CODEC(ZSTD(1)),
+    table_name        LowCardinality(String)                     CODEC(ZSTD(1)),
+    time_from         DateTime64(3)                              CODEC(Delta, ZSTD(3)),
+    time_to           DateTime64(3)                              CODEC(Delta, ZSTD(3)),
+    event_count       UInt64        DEFAULT 0                    CODEC(ZSTD(1)),
+    merkle_root       String                                     CODEC(ZSTD(3)),
+    merkle_depth      UInt8         DEFAULT 0                    CODEC(ZSTD(1)),
+    leaf_hashes       Array(String)                              CODEC(ZSTD(3)),
+    s3_key            String        DEFAULT ''                   CODEC(ZSTD(1)),
+    s3_version_id     String        DEFAULT ''                   CODEC(ZSTD(1)),
+    status            LowCardinality(String) DEFAULT 'Pending'   CODEC(ZSTD(1)),
+    prev_merkle_root  String        DEFAULT ''                   CODEC(ZSTD(3)),
+    created_at        DateTime64(3) DEFAULT now64()              CODEC(Delta, ZSTD(3)),
+
+    INDEX idx_table    table_name   TYPE set(10)                 GRANULARITY 1,
+    INDEX idx_status   status       TYPE set(10)                 GRANULARITY 1
+)
+ENGINE = ReplicatedMergeTree(
+    '/clickhouse/tables/{shard}/evidence_anchors',
+    '{replica}'
+)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (table_name, time_from, batch_id)
+TTL
+    toDateTime(created_at) + INTERVAL 365 DAY DELETE
+SETTINGS
+    index_granularity = 8192;

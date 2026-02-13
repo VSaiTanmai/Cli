@@ -50,12 +50,12 @@ except ImportError:
 CH_HOST     = os.getenv("CLICKHOUSE_HOST", "localhost")
 CH_PORT     = int(os.getenv("CLICKHOUSE_PORT", "9000"))
 CH_USER     = os.getenv("CLICKHOUSE_USER", "clif_admin")
-CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "Cl1f_Ch@ngeM3_2026!")
+CH_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
 CH_DB       = os.getenv("CLICKHOUSE_DB", "clif_logs")
 
 S3_ENDPOINT   = os.getenv("MINIO_ENDPOINT", "http://localhost:9002")
-S3_ACCESS_KEY = os.getenv("MINIO_ROOT_USER", "clif_minio_admin")
-S3_SECRET_KEY = os.getenv("MINIO_ROOT_PASSWORD", "Cl1f_M1n10_2026!")
+S3_ACCESS_KEY = os.getenv("MINIO_ROOT_USER", "")
+S3_SECRET_KEY = os.getenv("MINIO_ROOT_PASSWORD", "")
 S3_BUCKET     = os.getenv("MINIO_BUCKET_EVIDENCE", "clif-evidence-archive")
 
 BATCH_WINDOW_SEC = int(os.getenv("MERKLE_BATCH_WINDOW", "1800"))   # 30 min
@@ -75,13 +75,28 @@ log = logging.getLogger("clif.merkle")
 
 # ── ClickHouse helpers ───────────────────────────────────────────────────────
 
+# Reusable connection pool (thread-local per caller)
+_ch_pool: CHClient | None = None
+
+
 def _ch_client() -> CHClient:
-    return CHClient(
+    global _ch_pool
+    if _ch_pool is not None:
+        try:
+            _ch_pool.execute("SELECT 1")
+            return _ch_pool
+        except Exception:
+            log.warning("Cached ClickHouse connection stale, reconnecting")
+            _ch_pool = None
+
+    client = CHClient(
         host=CH_HOST, port=CH_PORT,
         user=CH_USER, password=CH_PASSWORD,
         database=CH_DB,
         connect_timeout=10, send_receive_timeout=600,
     )
+    _ch_pool = client
+    return client
 
 
 def get_last_anchor_time(ch: CHClient, table: str) -> datetime:
@@ -96,7 +111,7 @@ def get_last_anchor_time(ch: CHClient, table: str) -> datetime:
         earliest = ch.execute(f"SELECT min(timestamp) FROM {table}")
         if earliest and earliest[0][0]:
             return earliest[0][0]
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
     return val
 
 
@@ -327,7 +342,7 @@ def anchor_batch(
     return proof
 
 
-def run_anchor_cycle(ch: CHClient, s3) -> int:
+def run_anchor_cycle(ch: CHClient, s3, daemon_mode: bool = False) -> int:
     """Run one anchoring cycle across all tables. Returns total batches created."""
     total = 0
 
@@ -337,8 +352,53 @@ def run_anchor_cycle(ch: CHClient, s3) -> int:
             "SELECT count() FROM evidence_anchors WHERE table_name = %(t)s",
             {"t": table},
         )
-        if existing and existing[0][0] > 0:
-            log.info("Table %s already anchored (%d batches), skipping", table, existing[0][0])
+        existing_count = existing[0][0] if existing else 0
+
+        if existing_count > 0 and not daemon_mode:
+            log.info("Table %s already anchored (%d batches), skipping", table, existing_count)
+            continue
+
+        if existing_count > 0 and daemon_mode:
+            # Daemon mode: anchor NEW events since last anchor
+            last_anchor = get_last_anchor_time(ch, table)
+            t_from = last_anchor
+
+            # Get max timestamp
+            range_rows = ch.execute(
+                f"SELECT toString(max(timestamp)), count() FROM {table} WHERE timestamp > %(since)s",
+                {"since": t_from},
+            )
+            if not range_rows or range_rows[0][1] == 0:
+                log.debug("No new events in %s since %s", table, t_from)
+                continue
+
+            max_ts_str, event_count = range_rows[0]
+            t_to = datetime.strptime(max_ts_str[:19], "%Y-%m-%d %H:%M:%S") + timedelta(seconds=1)
+            log.info("Table %s: %d new events since %s", table, event_count, t_from)
+
+            # Get prev root for chaining
+            prev_rows = ch.execute(
+                "SELECT merkle_root FROM evidence_anchors "
+                "WHERE table_name = %(t)s ORDER BY created_at DESC LIMIT 1",
+                {"t": table},
+            )
+            prev_root = prev_rows[0][0] if prev_rows else ""
+
+            cursor = t_from
+            batch_num = 0
+            while cursor < t_to:
+                batch_end = cursor + timedelta(seconds=_batch_window)
+                if batch_end > t_to:
+                    batch_end = t_to
+                result = anchor_batch(ch, s3, table, cursor, batch_end, prev_root)
+                if result:
+                    prev_root = result["merkle_root"]
+                    total += 1
+                    batch_num += 1
+                cursor = batch_end
+
+            if batch_num > 0:
+                log.info("Table %s: created %d new batches", table, batch_num)
             continue
 
         # Get actual data range (use toString for reliable parsing)
@@ -453,16 +513,32 @@ def main():
     print("=" * 70)
 
     if args.daemon:
-        while True:
+        import signal as _signal
+        _running = True
+
+        def _stop(sig, frame):
+            nonlocal _running
+            log.info("Received signal %s — shutting down gracefully", sig)
+            _running = False
+
+        _signal.signal(_signal.SIGINT, _stop)
+        _signal.signal(_signal.SIGTERM, _stop)
+
+        while _running:
             try:
-                n = run_anchor_cycle(ch, s3)
+                n = run_anchor_cycle(ch, s3, daemon_mode=True)
                 if n > 0:
                     log.info("Cycle complete: %d batches anchored", n)
                 else:
                     log.debug("Cycle complete: no new events to anchor")
             except Exception as e:
                 log.error("Anchor cycle failed: %s", e)
-            time.sleep(DAEMON_INTERVAL)
+            # Interruptible sleep
+            for _ in range(DAEMON_INTERVAL):
+                if not _running:
+                    break
+                time.sleep(1)
+        log.info("Merkle service stopped gracefully")
     else:
         n = run_anchor_cycle(ch, s3)
         print(f"\n  Anchored {n} batches across {len(TABLES)} tables.")

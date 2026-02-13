@@ -21,7 +21,7 @@ const VALID_TABLES = new Set(Object.keys(TABLE_COLUMNS));
 const RATE_LIMIT = { maxTokens: 60, refillRate: 5 };
 
 export async function GET(request: Request) {
-  const limited = checkRateLimit(getClientId(request), RATE_LIMIT);
+  const limited = checkRateLimit(getClientId(request), RATE_LIMIT, "/api/events/stream");
   if (limited) return limited;
 
   const { searchParams } = new URL(request.url);
@@ -31,20 +31,20 @@ export async function GET(request: Request) {
     if (table === "all") {
       // Union latest events from all 4 tables with normalized columns
       // Frontend expects: event_id, timestamp, log_source, hostname, severity, raw, _table
-      // Use a 5-minute sliding window so ClickHouse only scans recent partitions
+      // Use a 24-hour sliding window so the live feed always has data
       const result = await queryClickHouse(
         `SELECT * FROM (
            (SELECT toString(event_id) AS event_id, timestamp, source AS log_source, '' AS hostname, toNullable(toUInt8(0)) AS severity, message AS raw, 'raw_logs' AS _table
-            FROM clif_logs.raw_logs WHERE timestamp >= now() - INTERVAL 5 MINUTE ORDER BY timestamp DESC LIMIT 25)
+            FROM clif_logs.raw_logs WHERE timestamp >= now() - INTERVAL 24 HOUR ORDER BY timestamp DESC LIMIT 25)
            UNION ALL
            (SELECT toString(event_id), timestamp, source, hostname, toNullable(severity), description, 'security_events'
-            FROM clif_logs.security_events WHERE timestamp >= now() - INTERVAL 5 MINUTE ORDER BY timestamp DESC LIMIT 25)
+            FROM clif_logs.security_events WHERE timestamp >= now() - INTERVAL 24 HOUR ORDER BY timestamp DESC LIMIT 25)
            UNION ALL
            (SELECT toString(event_id), timestamp, '' AS log_source, hostname, toNullable(toUInt8(is_suspicious)) AS severity, concat(binary_path, ' ', arguments) AS raw, 'process_events'
-            FROM clif_logs.process_events WHERE timestamp >= now() - INTERVAL 5 MINUTE ORDER BY timestamp DESC LIMIT 25)
+            FROM clif_logs.process_events WHERE timestamp >= now() - INTERVAL 24 HOUR ORDER BY timestamp DESC LIMIT 25)
            UNION ALL
            (SELECT toString(event_id), timestamp, protocol AS log_source, hostname, toNullable(toUInt8(is_suspicious)) AS severity, concat(IPv4NumToString(src_ip), ':', toString(src_port), ' → ', IPv4NumToString(dst_ip), ':', toString(dst_port), ' ', dns_query) AS raw, 'network_events'
-            FROM clif_logs.network_events WHERE timestamp >= now() - INTERVAL 5 MINUTE ORDER BY timestamp DESC LIMIT 25)
+            FROM clif_logs.network_events WHERE timestamp >= now() - INTERVAL 24 HOUR ORDER BY timestamp DESC LIMIT 25)
          ) AS combined
          ORDER BY timestamp DESC
          LIMIT 100

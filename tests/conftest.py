@@ -6,6 +6,12 @@ from __future__ import annotations
 import os
 import re
 import pytest
+
+# test_lancedb.py is a standalone CLI script, not a pytest test module.
+# Its test functions accept a plain `url: str` parameter (not a fixture),
+# so pytest discovery must skip it.
+collect_ignore = ["test_lancedb.py"]
+
 from clickhouse_driver import Client as _CHNativeClient
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient

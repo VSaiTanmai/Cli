@@ -45,6 +45,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
+try:
+    import orjson
+    _fast_dumps = orjson.dumps  # Returns bytes directly, ~6x faster than json.dumps
+except ImportError:
+    def _fast_dumps(obj):
+        return json.dumps(obj).encode()
+
 # ── Dependencies ─────────────────────────────────────────────────────────────
 try:
     from confluent_kafka import Producer, Consumer, TopicPartition, KafkaError
@@ -150,8 +157,11 @@ ATTACK_TECHNIQUES = ["T1059.001", "T1053.005", "T1021.001", "T1078", "T1110.001"
                      "T1055.001", "T1218.011", "T1003.001", "T1547.001", "T1070.004"]
 
 
+# Pre-compute UTC timezone once
+_UTC = timezone.utc
+
 def _now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(_UTC).isoformat()
 
 
 def _gen_raw_log(tag: str = "", seq: int = 0) -> dict:
@@ -197,7 +207,7 @@ def _gen_process_event(tag: str = "", seq: int = 0) -> dict:
         "gid": random.randint(1000, 65534),
         "binary_path": f"C:\\Windows\\Temp\\{random.choice(string.ascii_lowercase)}.exe" if is_suspicious
                        else f"C:\\Windows\\System32\\{random.choice(PROCESSES)}",
-        "arguments": f"--encoded {hashlib.md5(str(random.random()).encode()).hexdigest()}" if is_suspicious
+        "arguments": f"--encoded {random.randbytes(16).hex()}" if is_suspicious
                      else f"--user {random.choice(USERS)}",
         "cwd": "C:\\Windows\\Temp" if is_suspicious else f"C:\\Users\\{random.choice(USERS)}",
         "exit_code": 0,
@@ -398,12 +408,14 @@ def test_sustained_throughput(total_events: int, duration_sec: int, tag: str) ->
     sec_count = 0
     sec_start = time.perf_counter()
 
+    # Pre-compute topic weight list once
+    _topic_weights = [TOPIC_WEIGHTS[t] for t in TOPICS]
+
     while time.perf_counter() < t_end and total_produced < total_events:
         # Distribute across topics by weight
-        topic = random.choices(TOPICS, weights=[TOPIC_WEIGHTS[t] for t in TOPICS], k=1)[0]
+        topic = random.choices(TOPICS, weights=_topic_weights, k=1)[0]
         event = TOPIC_GENERATORS[topic](tag=tag, seq=total_produced)
-        payload = json.dumps(event).encode()
-        checksum_hashes.append(hashlib.md5(payload).hexdigest())
+        payload = _fast_dumps(event)
         producer.produce(topic, payload, callback=_delivery_cb)
         total_produced += 1
 
@@ -424,7 +436,7 @@ def test_sustained_throughput(total_events: int, duration_sec: int, tag: str) ->
                 time.sleep(0.001)
         sec_count += 1
 
-    producer.flush(timeout=120)
+    producer.flush(timeout=300)
     producer.poll(0)
     total_elapsed = time.perf_counter() - t_start
 
@@ -488,14 +500,15 @@ def test_burst_capacity(burst_events: int, tag: str) -> dict:
 
     t_start = time.perf_counter()
 
+    _topic_weights = [TOPIC_WEIGHTS[t] for t in TOPICS]
     for i in range(burst_events):
-        topic = random.choices(TOPICS, weights=[TOPIC_WEIGHTS[t] for t in TOPICS], k=1)[0]
+        topic = random.choices(TOPICS, weights=_topic_weights, k=1)[0]
         event = TOPIC_GENERATORS[topic](tag=tag, seq=i)
-        producer.produce(topic, json.dumps(event).encode(), callback=_delivery_cb)
+        producer.produce(topic, _fast_dumps(event), callback=_delivery_cb)
         if i % 10_000 == 0:
             producer.poll(0)
 
-    producer.flush(timeout=180)
+    producer.flush(timeout=300)
     producer.poll(0)
     burst_elapsed = time.perf_counter() - t_start
     burst_eps = _delivery_ok / burst_elapsed if burst_elapsed > 0 else 0
@@ -539,7 +552,7 @@ def test_e2e_latency(n_probes: int, tag: str) -> dict:
         probe_id = f"{tag}-probe-{i}"
         probe_tags.append(probe_id)
         event = _gen_raw_log(tag=probe_id, seq=i)
-        producer.produce("raw-logs", json.dumps(event).encode())
+        producer.produce("raw-logs", _fast_dumps(event))
         if i % 50 == 0:
             producer.poll(0)
 

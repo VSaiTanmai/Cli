@@ -201,7 +201,7 @@ export default function SettingsPage() {
                 { name: "MISP", desc: "Threat intelligence sharing platform", status: "Connected" },
                 { name: "AlienVault OTX", desc: "Open Threat Exchange feed", status: "Connected" },
                 { name: "VirusTotal", desc: "Hash and IOC lookup", status: "API Key Set" },
-                { name: "LanceDB", desc: "Vector database for AI agents", status: "Pending" },
+                { name: "LanceDB", desc: "Vector database for AI agents", status: "Connected" },
                 { name: "Ethereum (Anchor)", desc: "Blockchain evidence anchoring", status: "Pending" },
               ].map((item) => (
                 <div

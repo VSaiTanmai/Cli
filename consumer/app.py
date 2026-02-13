@@ -43,7 +43,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Semaphore, Thread
 from typing import Any
 
 from confluent_kafka import Consumer, KafkaError, KafkaException
@@ -393,30 +393,32 @@ class WriterPool:
     """
     Pool of ClickHouseWriter instances — one per flush worker thread.
     Eliminates socket contention by giving each thread its own connection.
+    Uses a Semaphore for efficient blocking instead of spin-wait.
     """
 
     def __init__(self, size: int) -> None:
         self._writers: list[ClickHouseWriter] = []
         self._lock = Lock()
+        self._semaphore = Semaphore(0)  # starts empty
         self._available: list[ClickHouseWriter] = []
         log.info("Initializing ClickHouse writer pool (size=%d) …", size)
         for i in range(size):
             w = ClickHouseWriter(writer_id=i)
             self._writers.append(w)
             self._available.append(w)
+            self._semaphore.release()  # signal one writer available
 
     def acquire(self) -> ClickHouseWriter:
-        """Borrow a writer from the pool (blocking)."""
-        while True:
-            with self._lock:
-                if self._available:
-                    return self._available.pop()
-            time.sleep(0.001)  # spin-wait with yield
+        """Borrow a writer from the pool (blocks efficiently via semaphore)."""
+        self._semaphore.acquire()  # blocks without spinning
+        with self._lock:
+            return self._available.pop()
 
     def release(self, writer: ClickHouseWriter) -> None:
         """Return a writer to the pool."""
         with self._lock:
             self._available.append(writer)
+        self._semaphore.release()
 
 
 # ── Stats reporter ───────────────────────────────────────────────────────────
@@ -522,7 +524,7 @@ def _flush_all_parallel(
     stats: StatsReporter,
     flush_executor: ThreadPoolExecutor,
     pending_futures: list,
-) -> None:
+) -> bool:
     """
     Pipelined flush: collect results from any PREVIOUS flush that finished,
     then snapshot-and-submit the current buffers WITHOUT blocking.
@@ -530,7 +532,12 @@ def _flush_all_parallel(
 
     ``pending_futures`` is a mutable list shared across calls — it accumulates
     futures and is drained as they complete.
+
+    Returns True if ALL previous flushes succeeded (safe to commit offsets),
+    False if any flush failed (do NOT commit offsets).
     """
+    all_ok = True
+
     # ── 1. Harvest completed futures from previous flush (non-blocking) ──
     still_pending = []
     total_flushed = 0
@@ -543,6 +550,7 @@ def _flush_all_parallel(
             except Exception as exc:
                 log.error("Failed to flush %d rows → %s: %s", count, table, exc)
                 stats.record_error(count)
+                all_ok = False
         else:
             still_pending.append((fut, table, count))
     pending_futures.clear()
@@ -559,6 +567,7 @@ def _flush_all_parallel(
         except Exception as exc:
             log.error("Back-pressured flush %d rows → %s failed: %s", count, table, exc)
             stats.record_error(count)
+            all_ok = False
 
     # ── 3. Snapshot + submit new flush tasks (non-blocking) ──
     for table, col_bufs in buffers.items():
@@ -574,8 +583,7 @@ def _flush_all_parallel(
         )
         pending_futures.append((future, table, row_count))
 
-
-# ── Main consumer loop ──────────────────────────────────────────────────────
+    return all_ok
 
 
 def main() -> None:
@@ -639,8 +647,11 @@ def main() -> None:
             if not messages:
                 # No messages — check time-based flush
                 if time.monotonic() - last_flush >= FLUSH_INTERVAL and total_buffered > 0:
-                    _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
-                    consumer.commit(asynchronous=True)
+                    flush_ok = _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
+                    if flush_ok:
+                        consumer.commit(asynchronous=True)
+                    else:
+                        log.warning("Skipping offset commit — previous flush had errors")
                     total_buffered = 0
                     last_flush = time.monotonic()
                 continue
@@ -695,16 +706,22 @@ def main() -> None:
 
             # ── Size-based flush ──
             if total_buffered >= BATCH_SIZE:
-                _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
-                consumer.commit(asynchronous=True)
+                flush_ok = _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
+                if flush_ok:
+                    consumer.commit(asynchronous=True)
+                else:
+                    log.warning("Skipping offset commit — previous flush had errors")
                 total_buffered = 0
                 last_flush = time.monotonic()
                 continue
 
             # ── Time-based flush ──
             if time.monotonic() - last_flush >= FLUSH_INTERVAL:
-                _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
-                consumer.commit(asynchronous=True)
+                flush_ok = _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
+                if flush_ok:
+                    consumer.commit(asynchronous=True)
+                else:
+                    log.warning("Skipping offset commit — previous flush had errors")
                 total_buffered = 0
                 last_flush = time.monotonic()
 
@@ -714,16 +731,21 @@ def main() -> None:
         log.info("Draining remaining buffers …")
         _flush_all_parallel(writer_pool, buffers, stats, flush_pool, pending_futures)
         # Wait for all pending flushes to complete before final commit
+        all_final_ok = True
         for fut, table, count in pending_futures:
             try:
                 fut.result(timeout=60)
             except Exception as exc:
-                log.error("Final flush %d rows → %s failed: %s", count, table, exc)
+                log.error("Final flush %d rows \u2192 %s failed: %s", count, table, exc)
+                all_final_ok = False
         pending_futures.clear()
-        try:
-            consumer.commit(asynchronous=False)  # final commit is synchronous
-        except Exception:
-            pass
+        if all_final_ok:
+            try:
+                consumer.commit(asynchronous=False)  # final commit is synchronous
+            except Exception:
+                pass
+        else:
+            log.error("Final flush had errors — offsets NOT committed to prevent data loss")
         consumer.close()
         flush_pool.shutdown(wait=True, cancel_futures=False)
         log.info("Consumer shut down cleanly.")

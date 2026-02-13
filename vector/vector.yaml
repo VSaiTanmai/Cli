@@ -647,8 +647,35 @@ transforms:
     cache:
       num_events: 25000
 
-  # ── Sample DEBUG-level logs (keep 10% in production) ──────────────────────
-  # Prevents debug noise from dominating storage while preserving visibility.
+  dedup_process:
+    type: dedupe
+    inputs:
+      - "format_process"
+    fields:
+      match:
+        - "timestamp"
+        - "hostname"
+        - "pid"
+        - "binary_path"
+    cache:
+      num_events: 25000
+
+  dedup_network:
+    type: dedupe
+    inputs:
+      - "format_network"
+    fields:
+      match:
+        - "timestamp"
+        - "src_ip"
+        - "dst_ip"
+        - "dst_port"
+        - "protocol"
+    cache:
+      num_events: 25000
+
+  # ── Filter DEBUG-level logs (drop in production) ───────────────────────────
+  # Prevents debug noise from dominating storage. All non-DEBUG logs pass through.
 
   sample_debug:
     type: filter
@@ -725,7 +752,7 @@ sinks:
   sink_process_events:
     type: kafka
     inputs:
-      - "format_process"
+      - "dedup_process"
     bootstrap_servers: "${VECTOR_KAFKA_BROKERS:-redpanda01:9092,redpanda02:9092,redpanda03:9092}"
     topic: "process-events"
     encoding:
@@ -754,7 +781,7 @@ sinks:
   sink_network_events:
     type: kafka
     inputs:
-      - "format_network"
+      - "dedup_network"
     bootstrap_servers: "${VECTOR_KAFKA_BROKERS:-redpanda01:9092,redpanda02:9092,redpanda03:9092}"
     topic: "network-events"
     encoding:

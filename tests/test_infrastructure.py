@@ -16,9 +16,7 @@ Run:
 """
 from __future__ import annotations
 
-import re
 import subprocess
-import time
 
 import pytest
 import requests

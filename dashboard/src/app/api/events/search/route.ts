@@ -25,7 +25,7 @@ const MAX_OFFSET = 100_000; // Prevent excessive OFFSET scans
 const RATE_LIMIT = { maxTokens: 30, refillRate: 2 };
 
 export async function GET(req: NextRequest) {
-  const limited = checkRateLimit(getClientId(req), RATE_LIMIT);
+  const limited = checkRateLimit(getClientId(req), RATE_LIMIT, "/api/events/search");
   if (limited) return limited;
 
   const { searchParams } = req.nextUrl;
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     const conditions: string[] = [];
     const params: Record<string, string | number> = {};
     if (query) {
-      // Search across the most useful text columns per table
+      // Use ilike for case-insensitive search — compatible with tokenbf_v1 index
       const searchCols: Record<string, string> = {
         raw_logs: "concat(source, ' ', message, ' ', user_id)",
         security_events: "concat(source, ' ', description, ' ', hostname, ' ', user_id, ' ', category, ' ', mitre_tactic, ' ', mitre_technique)",
@@ -56,8 +56,8 @@ export async function GET(req: NextRequest) {
         network_events: "concat(hostname, ' ', protocol, ' ', dns_query, ' ', direction)",
       };
       const haystack = searchCols[safeTable] ?? "source";
-      conditions.push(`position(lower(${haystack}), lower({q:String})) > 0`);
-      params.q = query;
+      conditions.push(`${haystack} ilike {q:String}`);
+      params.q = `%${query}%`;
     }
     // Only apply severity filter to tables that actually have the column
     if (severity && SEVERITY_TABLES.has(safeTable)) {

@@ -226,11 +226,11 @@ class TestClickHouseFailover:
         # Verify replica caught up
         time.sleep(10)
         try:
-            from conftest import ClickHouseClient
+            from conftest import ClickHouseClient, CH_HOST, CH_PORT_2, CH_USER, CH_PASS, CH_DB
             ch2_fresh = ClickHouseClient(
-                host="localhost", port=9001,
-                username="clif_admin", password="Cl1f_Ch@ngeM3_2026!",
-                database="clif_logs", connect_timeout=30,
+                host=CH_HOST, port=CH_PORT_2,
+                username=CH_USER, password=CH_PASS,
+                database=CH_DB, connect_timeout=30,
             )
             result2 = ch2_fresh.query(
                 "SELECT count() FROM raw_logs WHERE request_id = {tag:String}",
@@ -339,11 +339,11 @@ class TestConcurrentWritesDuringFailure:
 
         # 7. Verify replica caught up on node 2
         try:
-            from conftest import ClickHouseClient
+            from conftest import ClickHouseClient, CH_HOST, CH_PORT_2, CH_USER, CH_PASS, CH_DB
             ch2 = ClickHouseClient(
-                host="localhost", port=9001,
-                username="clif_admin", password="Cl1f_Ch@ngeM3_2026!",
-                database="clif_logs", connect_timeout=30,
+                host=CH_HOST, port=CH_PORT_2,
+                username=CH_USER, password=CH_PASS,
+                database=CH_DB, connect_timeout=30,
             )
             r = ch2.query(
                 "SELECT count() FROM raw_logs WHERE request_id = {tag:String}",

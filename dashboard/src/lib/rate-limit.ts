@@ -58,20 +58,24 @@ const DEFAULT_CONFIG: RateLimitConfig = {
 /**
  * Check rate limit for a given client identifier.
  *
+ * @param routePath Optional route path to scope rate limiting per-route per-client
  * @returns null if allowed, or a NextResponse with 429 status if rate-limited
  */
 export function checkRateLimit(
   clientId: string,
   config: RateLimitConfig = DEFAULT_CONFIG,
+  routePath?: string,
 ): NextResponse | null {
   ensureCleanup();
 
   const now = Date.now();
-  let bucket = buckets.get(clientId);
+  // Key by clientId + route to prevent cross-route bucket interference
+  const bucketKey = routePath ? `${clientId}::${routePath}` : clientId;
+  let bucket = buckets.get(bucketKey);
 
   if (!bucket) {
     bucket = { tokens: config.maxTokens, lastRefill: now };
-    buckets.set(clientId, bucket);
+    buckets.set(bucketKey, bucket);
   }
 
   // Refill tokens based on elapsed time
