@@ -10,13 +10,13 @@
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│                         Log Producers                                │
-│   (Tetragon / Vector / Applications — future integration)            │
+│                         Log Producers                                 │
+│   (Tetragon / Vector / Applications — future integration)             │
 └────────────────────────────┬──────────────────────────────────────────┘
                              │  Kafka protocol
                              ▼
 ┌───────────────────────────────────────────────────────────────────────┐
-│  Redpanda Cluster  (3 brokers, Kafka-compatible, C++ native)         │
+│  Redpanda Cluster  (3 brokers, Kafka-compatible, C++ native)          │
 │                                                                       │
 │  Topics:  raw-logs │ security-events │ process-events │ network-events│
 │           12 partitions each, RF=3, 7-day retention, LZ4 passthrough  │
@@ -24,7 +24,7 @@
                              │
                              ▼
 ┌───────────────────────────────────────────────────────────────────────┐
-│  CLIF Consumer ×3  (Python — confluent-kafka + clickhouse-driver)    │
+│  CLIF Consumer ×3  (Python — confluent-kafka + clickhouse-driver)     │
 │                                                                       │
 │  • 3 horizontally-scaled consumers in same consumer group            │
 │  • 12 partitions / 3 consumers = 4 partitions each                   │
