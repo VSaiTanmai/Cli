@@ -55,7 +55,7 @@ function guessServiceKey(name: string): string {
 }
 
 export default function SystemHealthPage() {
-  const { data, loading, refresh } = usePolling<SystemData>("/api/system", 10000);
+  const { data, loading, error, refresh } = usePolling<SystemData>("/api/system", 10000);
 
   const services = data?.services ?? [];
 
@@ -86,6 +86,22 @@ export default function SystemHealthPage() {
           <RefreshCcw className="h-3.5 w-3.5" /> Refresh
         </Button>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="flex items-center gap-3 p-4">
+            <XCircle className="h-5 w-5 text-destructive shrink-0" />
+            <div className="flex-1 text-sm">
+              <p className="font-medium text-destructive">Service health check failed</p>
+              <p className="text-xs text-muted-foreground">{error} — retrying with backoff</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={refresh} className="gap-1 shrink-0">
+              <RefreshCcw className="h-3 w-3" /> Retry Now
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status Summary */}
       <div className="grid gap-4 md:grid-cols-4">

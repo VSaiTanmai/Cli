@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import investigationsData from "@/lib/mock/investigations.json";
 import type { Investigation } from "@/lib/types";
+import { InvestigationGraph } from "@/components/investigation-graph";
 import { toast } from "sonner";
 
 const cases = investigationsData.cases as Investigation[];
@@ -152,6 +153,9 @@ export default function InvestigationDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Attack Graph */}
+      <InvestigationGraph investigation={investigation} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Description + Tags — 2 cols */}

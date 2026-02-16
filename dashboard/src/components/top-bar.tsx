@@ -1,10 +1,10 @@
 "use client";
 
-import { Search, Bell, ShieldAlert, X } from "lucide-react";
+import { Search, Bell, ShieldAlert, X, Filter, CheckCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 interface RecentAlert {
@@ -27,6 +27,9 @@ export function TopBar() {
   const [alerts, setAlerts] = useState<RecentAlert[]>([]);
   const [showPanel, setShowPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [panelSevFilter, setPanelSevFilter] = useState<number | null>(null);
+  const [panelLimit, setPanelLimit] = useState(10);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -49,8 +52,7 @@ export function TopBar() {
       if (alertsRes.status === "fulfilled" && alertsRes.value.ok) {
         const json = await alertsRes.value.json();
         const recent = (json.alerts ?? [])
-          .filter((a: RecentAlert) => a.severity >= 3)
-          .slice(0, 8);
+          .filter((a: RecentAlert) => a.severity >= 3);
         setAlerts(recent);
       }
     } catch (err) {
@@ -65,6 +67,21 @@ export function TopBar() {
     const t = setInterval(fetchData, 30_000);
     return () => { clearInterval(t); abortRef.current?.abort(); };
   }, [fetchData]);
+
+  const filteredAlerts = useMemo(() => {
+    let list = alerts;
+    if (panelSevFilter !== null) list = list.filter((a) => a.severity === panelSevFilter);
+    return list;
+  }, [alerts, panelSevFilter]);
+
+  const unreadCount = useMemo(
+    () => alerts.filter((a) => !readIds.has(a.event_id)).length,
+    [alerts, readIds],
+  );
+
+  const markAllRead = useCallback(() => {
+    setReadIds(new Set(alerts.map((a) => a.event_id)));
+  }, [alerts]);
 
   // Close panel on click outside
   useEffect(() => {
@@ -125,15 +142,15 @@ export function TopBar() {
             variant="ghost"
             size="icon"
             className="relative h-8 w-8"
-            onClick={() => setShowPanel((p) => !p)}
-            aria-label={`Notifications${alertCount > 0 ? ` (${alertCount} critical)` : ""}`}
+            onClick={() => { setShowPanel((p) => !p); setPanelLimit(10); }}
+            aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
             aria-expanded={showPanel}
             aria-haspopup="dialog"
           >
             <Bell className="h-4 w-4" />
-            {alertCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
-                {alertCount > 99 ? "99+" : alertCount}
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
           </Button>
@@ -141,50 +158,99 @@ export function TopBar() {
           {/* Notification dropdown panel */}
           {showPanel && (
             <div
-              className="absolute right-0 top-10 z-50 w-96 rounded-lg border bg-card shadow-xl"
+              className="absolute right-0 top-10 z-50 w-[420px] rounded-lg border bg-card shadow-xl"
               role="dialog"
               aria-label="Recent notifications"
             >
               <div className="flex items-center justify-between border-b px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <ShieldAlert className="h-4 w-4 text-destructive" />
-                  <span className="text-sm font-semibold">Recent High-Severity Alerts</span>
+                  <span className="text-sm font-semibold">Alerts</span>
+                  <Badge variant="outline" className="tabular-nums text-[10px]">{alerts.length}</Badge>
                 </div>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowPanel(false)}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {unreadCount > 0 && (
+                    <Button variant="ghost" size="sm" className="h-6 gap-1 text-[10px] px-2" onClick={markAllRead}>
+                      <CheckCheck className="h-3 w-3" /> Mark all read
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowPanel(false)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              {/* Severity filter tabs */}
+              <div className="flex items-center gap-1 border-b px-4 py-1.5">
+                <Filter className="h-3 w-3 text-muted-foreground" />
+                {[
+                  { label: "All", value: null },
+                  { label: "Critical", value: 4 },
+                  { label: "High", value: 3 },
+                ].map((opt) => (
+                  <button
+                    key={opt.label}
+                    className={`rounded-sm px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      panelSevFilter === opt.value
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => { setPanelSevFilter(opt.value); setPanelLimit(10); }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
+                  {filteredAlerts.length} alerts
+                </span>
               </div>
               <div className="max-h-80 overflow-y-auto divide-y divide-border/30">
-                {alerts.length === 0 ? (
+                {filteredAlerts.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    No critical alerts in the last 24 hours
+                    No {panelSevFilter === 4 ? "critical" : panelSevFilter === 3 ? "high-severity" : "high-severity"} alerts in the last 24 hours
                   </div>
                 ) : (
-                  alerts.map((a, i) => (
-                    <div key={a.event_id || i} className="px-4 py-3 hover:bg-muted/20 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={SEV_VARIANT[a.severity] ?? "info"} className="text-[9px] shrink-0">
-                          {SEV_LABEL[a.severity] ?? "Info"}
-                        </Badge>
-                        <span className="text-xs font-medium truncate">{a.category || "Alert"}</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground whitespace-nowrap">
-                          {new Date(a.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                  filteredAlerts.slice(0, panelLimit).map((a, i) => {
+                    const isRead = readIds.has(a.event_id);
+                    return (
+                      <div
+                        key={a.event_id || i}
+                        className={`px-4 py-3 hover:bg-muted/20 transition-colors ${!isRead ? "border-l-2 border-l-primary" : ""}`}
+                        onClick={() => setReadIds((prev) => { const s = new Set(Array.from(prev)); s.add(a.event_id); return s; })}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge variant={SEV_VARIANT[a.severity] ?? "info"} className="text-[9px] shrink-0">
+                            {SEV_LABEL[a.severity] ?? "Info"}
+                          </Badge>
+                          <span className={`text-xs truncate ${!isRead ? "font-semibold" : "font-medium text-muted-foreground"}`}>
+                            {a.category || "Alert"}
+                          </span>
+                          <span className="ml-auto text-[10px] text-muted-foreground whitespace-nowrap">
+                            {new Date(a.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                          {a.description || "Security event detected"}
+                        </p>
+                        {a.hostname && (
+                          <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{a.hostname}</p>
+                        )}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                        {a.description || "Security event detected"}
-                      </p>
-                      {a.hostname && (
-                        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{a.hostname}</p>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
-              <div className="border-t px-4 py-2">
+              <div className="flex items-center justify-between border-t px-4 py-2">
                 <a href="/alerts" className="text-xs text-primary hover:underline">
                   View all alerts →
                 </a>
+                {filteredAlerts.length > panelLimit && (
+                  <button
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => setPanelLimit((p) => p + 20)}
+                  >
+                    Show more ({filteredAlerts.length - panelLimit} remaining)
+                  </button>
+                )}
               </div>
             </div>
           )}

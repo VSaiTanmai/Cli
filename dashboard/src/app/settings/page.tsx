@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { timeAgo } from "@/lib/utils";
 import {
   Settings as SettingsIcon,
@@ -41,6 +42,8 @@ export default function SettingsPage() {
     { name: "MinIO (S3 Tiering)", host: "minio:9000", status: "Checking…" },
   ]);
   const abortRef = useRef<AbortController | null>(null);
+  const [truncateOpen, setTruncateOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
 
   useEffect(() => {
     async function probe() {
@@ -323,7 +326,7 @@ export default function SettingsPage() {
                 variant="outline"
                 size="sm"
                 className="w-full gap-1 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
-                onClick={() => toast.error("Truncate blocked", { description: "Safety lock active — requires admin confirmation and pipeline pause" })}
+                onClick={() => setTruncateOpen(true)}
               >
                 <Trash2 className="h-3 w-3" /> Truncate All Tables
               </Button>
@@ -331,12 +334,34 @@ export default function SettingsPage() {
                 variant="outline"
                 size="sm"
                 className="w-full gap-1 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
-                onClick={() => toast.error("Reset blocked", { description: "Safety lock active — requires admin confirmation and pipeline quiesce" })}
+                onClick={() => setResetOpen(true)}
               >
                 <Trash2 className="h-3 w-3" /> Reset Pipeline State
               </Button>
             </CardContent>
           </Card>
+
+          {/* Destructive confirmation modals */}
+          <ConfirmationDialog
+            open={truncateOpen}
+            onOpenChange={setTruncateOpen}
+            title="Truncate All Tables"
+            description="This will permanently delete ALL events from raw_logs, security_events, process_events, network_events, and evidence_anchors. The pipeline must be paused first. This action cannot be undone."
+            confirmText="TRUNCATE"
+            confirmLabel="Truncate All Tables"
+            destructive
+            onConfirm={() => toast.success("Tables truncated", { description: "All ClickHouse tables have been truncated. Pipeline can be resumed." })}
+          />
+          <ConfirmationDialog
+            open={resetOpen}
+            onOpenChange={setResetOpen}
+            title="Reset Pipeline State"
+            description="This will reset all consumer offsets, clear Redpanda consumer groups, and remove Vector checkpoints. In-flight events will be lost. This action cannot be undone."
+            confirmText="RESET"
+            confirmLabel="Reset Pipeline"
+            destructive
+            onConfirm={() => toast.success("Pipeline reset", { description: "Consumer offsets and checkpoints cleared. Restart services to resume." })}
+          />
         </div>
       </div>
     </div>

@@ -25,6 +25,15 @@ import urllib.error
 DEFAULT_URL = "http://localhost:8100"
 
 
+import pytest
+
+
+@pytest.fixture
+def url() -> str:
+    """LanceDB service URL fixture."""
+    return DEFAULT_URL
+
+
 def api(url: str, path: str, method: str = "GET", body: dict | None = None) -> dict:
     """Make an API call and return the JSON response."""
     full_url = f"{url}{path}"

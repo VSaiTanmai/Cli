@@ -225,7 +225,9 @@ ENGINE = ReplicatedAggregatingMergeTree(
     '{replica}'
 )
 PARTITION BY toYYYYMM(minute)
-ORDER BY (minute, source, level);
+ORDER BY (minute, source, level)
+TTL minute + INTERVAL 30 DAY DELETE
+SETTINGS index_granularity = 8192;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_minute_mv ON CLUSTER 'clif_cluster'
 TO clif_logs.events_per_minute
@@ -252,7 +254,9 @@ ENGINE = ReplicatedAggregatingMergeTree(
     '{replica}'
 )
 PARTITION BY toYYYYMM(hour)
-ORDER BY (hour, category, severity);
+ORDER BY (hour, category, severity)
+TTL hour + INTERVAL 90 DAY DELETE
+SETTINGS index_granularity = 8192;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.security_severity_hourly_mv ON CLUSTER 'clif_cluster'
 TO clif_logs.security_severity_hourly
@@ -308,6 +312,69 @@ GROUP BY minute, source, level;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 6b. Fine-grained 10-second rollup for accurate sub-minute EPS measurement
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS clif_logs.events_per_10s ON CLUSTER 'clif_cluster'
+(
+    ts           DateTime       CODEC(Delta, ZSTD(1)),
+    source       LowCardinality(String) CODEC(ZSTD(1)),
+    event_count  SimpleAggregateFunction(sum, UInt64)
+)
+ENGINE = ReplicatedAggregatingMergeTree(
+    '/clickhouse/tables/{shard}/events_per_10s',
+    '{replica}'
+)
+ORDER BY (ts, source)
+TTL ts + INTERVAL 1 HOUR DELETE
+SETTINGS index_granularity = 256;
+
+-- raw_logs → events_per_10s  (uses now() = ingestion time for accurate rate)
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_10s_raw_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_10s
+AS
+SELECT
+    toStartOfInterval(now(), INTERVAL 10 SECOND) AS ts,
+    source,
+    count() AS event_count
+FROM clif_logs.raw_logs
+GROUP BY ts, source;
+
+-- security_events → events_per_10s  (uses now() = ingestion time)
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_10s_security_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_10s
+AS
+SELECT
+    toStartOfInterval(now(), INTERVAL 10 SECOND) AS ts,
+    source,
+    count() AS event_count
+FROM clif_logs.security_events
+GROUP BY ts, source;
+
+-- process_events → events_per_10s  (uses now() = ingestion time)
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_10s_process_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_10s
+AS
+SELECT
+    toStartOfInterval(now(), INTERVAL 10 SECOND) AS ts,
+    'process' AS source,
+    count() AS event_count
+FROM clif_logs.process_events
+GROUP BY ts, source;
+
+-- network_events → events_per_10s  (uses now() = ingestion time)
+CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_10s_network_mv ON CLUSTER 'clif_cluster'
+TO clif_logs.events_per_10s
+AS
+SELECT
+    toStartOfInterval(now(), INTERVAL 10 SECOND) AS ts,
+    protocol AS source,
+    count() AS event_count
+FROM clif_logs.network_events
+GROUP BY ts, source;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 7. evidence_anchors — Merkle tree anchor records for forensic integrity
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS clif_logs.evidence_anchors ON CLUSTER 'clif_cluster'
@@ -339,3 +406,21 @@ TTL
     toDateTime(created_at) + INTERVAL 365 DAY DELETE
 SETTINGS
     index_granularity = 8192;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8. pipeline_metrics — producer/consumer throughput metrics for dashboard
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clif_logs.pipeline_metrics ON CLUSTER 'clif_cluster'
+(
+    ts      DateTime   DEFAULT now()                              CODEC(Delta, ZSTD(1)),
+    metric  LowCardinality(String)                                CODEC(ZSTD(1)),
+    value   Float64    DEFAULT 0                                  CODEC(ZSTD(1))
+)
+ENGINE = ReplicatedMergeTree(
+    '/clickhouse/tables/{shard}/pipeline_metrics',
+    '{replica}'
+)
+ORDER BY (metric, ts)
+TTL ts + INTERVAL 24 HOUR DELETE
+SETTINGS index_granularity = 256;

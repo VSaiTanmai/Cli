@@ -70,7 +70,7 @@ class _CHClient:
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-BROKER = os.getenv("BROKER", "localhost:19092")
+BROKER = os.getenv("BROKER", "localhost:19092,localhost:29092,localhost:39092")
 CH_HOST = os.getenv("CH_HOST", "localhost")
 CH_PORT = int(os.getenv("CH_PORT", "9000"))
 CH_USER = os.getenv("CH_USER", "clif_admin")
@@ -79,15 +79,19 @@ CH_DB = os.getenv("CH_DB", "clif_logs")
 
 PRODUCER_CONFIG = {
     "bootstrap.servers": BROKER,
-    "linger.ms": 50,                         # 50ms — bigger batches, fewer RPCs
+    "linger.ms": 20,                          # 20ms — optimal batch fill for throughput
     "batch.num.messages": 100_000,            # 100K msgs per batch
-    "batch.size": 2_097_152,                  # 2 MB batch
-    "queue.buffering.max.messages": 2_000_000,
-    "queue.buffering.max.kbytes": 2_097_152,
+    "batch.size": 4_194_304,                  # 4 MB batch — bigger = fewer RPCs
+    "queue.buffering.max.messages": 4_000_000, # 4M — headroom for 8 workers
+    "queue.buffering.max.kbytes": 4_194_304,  # 4 GB queue
     "compression.type": "lz4",               # LZ4 fast compression
     "acks": "1",                              # leader-only ack (2/3 less broker CPU)
-    "message.send.max.retries": 3,
-    "socket.send.buffer.bytes": 2_097_152,    # 2 MB send buffer
+    "message.send.max.retries": 10,           # retry on transient broker disconnect
+    "retry.backoff.ms": 200,                  # 200ms between retries
+    "reconnect.backoff.ms": 100,              # fast reconnect
+    "reconnect.backoff.max.ms": 5000,         # max reconnect backoff
+    "socket.send.buffer.bytes": 4_194_304,    # 4 MB send buffer
+    "log.connection.close": False,            # suppress noisy disconnect logs
 }
 
 # ── LANL-Realistic Data Universe ────────────────────────────────────────────
@@ -336,7 +340,7 @@ TOPIC_CONFIG = {
 # topic) this eliminates the two largest bottlenecks: GIL contention and
 # per-event random.choice() + json.dumps() overhead.
 
-_RAND_BATCH = 10_000  # events per chunk — optimal interleave of gen vs produce
+_RAND_BATCH = 25_000  # events per chunk — larger = fewer iterations
 
 
 def _fast_ips(n):
@@ -528,45 +532,63 @@ _BATCH_GENERATORS = {
 }
 
 
-def _produce_worker(topic, count, tag, redteam_pct):
-    """Generate + produce events for one topic.
+def _produce_worker(topic, count, tag, redteam_pct, start_offset=0,
+                    duration_sec=0):
+    """Generate + produce events for one topic partition of work.
 
     Runs in its own **process** via ProcessPoolExecutor \u2192 own GIL, own core.
     Uses batch-random pre-computation + orjson for maximum throughput.
-    Peak memory \u2248 few MB per process regardless of total count.
+    No per-message callbacks \u2014 uses flush() return for delivery counting.
+
+    When *duration_sec* > 0, production is **paced** so events are spread
+    evenly across the requested wall-clock window.  This yields multiple
+    data-points on the dashboard Events/Minute graph and a live EPS counter.
     """
     p = Producer(PRODUCER_CONFIG)
-    delivered = 0
-    errors = 0
-
-    def _cb(err, _msg):
-        nonlocal delivered, errors
-        if err:
-            errors += 1
-        else:
-            delivered += 1
+    produced = 0
 
     batch_gen = _BATCH_GENERATORS[topic]
     is_auth = topic == "security-events"
 
     t0 = time.perf_counter()
-    offset = 0
-    while offset < count:
-        chunk = min(_RAND_BATCH, count - offset)
+    offset = start_offset
+    end = start_offset + count
+
+    # ---- pacing setup ----
+    # When duration_sec > 0 we compute a *target_eps* and inject
+    # time.sleep() between waves so production rate roughly matches.
+    target_eps = 0.0
+    if duration_sec > 0 and count > 0:
+        target_eps = count / duration_sec
+
+    while offset < end:
+        wave_t0 = time.perf_counter()
+        chunk = min(_RAND_BATCH, end - offset)
         ts = _now_iso()
-        if is_auth:
-            payloads = batch_gen(chunk, tag, ts, offset, redteam_pct)
-        else:
-            payloads = batch_gen(chunk, tag, ts, offset)
+        payloads = (batch_gen(chunk, tag, ts, offset, redteam_pct)
+                    if is_auth else batch_gen(chunk, tag, ts, offset))
         for payload in payloads:
-            p.produce(topic, payload, callback=_cb)
+            while True:
+                try:
+                    p.produce(topic, payload)
+                    produced += 1
+                    break
+                except BufferError:
+                    p.poll(100)  # drain queue, wait for space
         p.poll(0)
         offset += chunk
 
-    p.flush(300)
-    p.poll(0)
+        # ---- pace if needed ----
+        if target_eps > 0:
+            wave_elapsed = time.perf_counter() - wave_t0
+            expected_wave = chunk / target_eps
+            sleep_time = expected_wave - wave_elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+    remaining = p.flush(300)
     elapsed = time.perf_counter() - t0
-    return topic, delivered, errors, elapsed
+    return topic, produced - remaining, remaining, elapsed
 
 
 # ── Pipeline measurement ────────────────────────────────────────────────────
@@ -617,6 +639,12 @@ def main():
                         help="Skip ClickHouse verification (produce-only benchmark)")
     parser.add_argument("--redteam-pct", type=float, default=0.05,
                         help="Percentage of auth events that are red-team (default: 0.05%%)")
+    parser.add_argument("--workers-per-topic", type=int, default=2,
+                        help="Producer processes per topic (default: 2)")
+    parser.add_argument("--duration", type=int, default=0,
+                        help="Spread production over N seconds (0 = burst mode). "
+                             "Use e.g. --duration 300 to pace events over 5 minutes "
+                             "for live dashboard graph visibility.")
     args = parser.parse_args()
 
     total = args.events
@@ -630,6 +658,11 @@ def main():
     print(f"  ClickHouse:       {CH_HOST}:{CH_PORT}")
     print(f"  Tag:              {tag}")
     print(f"  Red team rate:    {args.redteam_pct:.2f}%")
+    print(f"  Workers/topic:    {args.workers_per_topic}")
+    if args.duration > 0:
+        print(f"  Duration:         {args.duration}s (paced mode — live dashboard)")
+    else:
+        print(f"  Duration:         burst (max speed)")
     print()
 
     # ── Phase 1: Compute event distribution ────────────────────────────
@@ -661,29 +694,42 @@ def main():
         print()
 
     # ── Phase 3: Parallel streaming produce ─────────────────────────────
-    print(f"[3/4] Streaming {actual_total:,} events across {len(TOPIC_CONFIG)} topics (multiprocess + orjson + batch-random) …")
+    wpt = args.workers_per_topic
+    num_workers = len(TOPIC_CONFIG) * wpt
+    mode_label = "paced" if args.duration > 0 else "burst"
+    print(f"[3/4] Streaming {actual_total:,} events across {len(TOPIC_CONFIG)} topics "
+          f"({num_workers} workers, {mode_label}, multiprocess + orjson + batch-random) \u2026")
     t_produce_start = time.perf_counter()
 
-    with ProcessPoolExecutor(max_workers=len(TOPIC_CONFIG)) as pool:
-        futures = {
-            pool.submit(
-                _produce_worker,
-                topic,
-                event_counts[topic],
-                tag,
-                args.redteam_pct,
-            ): topic
-            for topic in TOPIC_CONFIG
-        }
-        produce_results = {}
+    with ProcessPoolExecutor(max_workers=num_workers) as pool:
+        futures = {}
+        for topic in TOPIC_CONFIG:
+            total_for_topic = event_counts[topic]
+            per_worker = total_for_topic // wpt
+            remainder = total_for_topic % wpt
+            off = 0
+            for w in range(wpt):
+                wc = per_worker + (1 if w < remainder else 0)
+                fut = pool.submit(
+                    _produce_worker, topic, wc, tag, args.redteam_pct, off,
+                    args.duration,
+                )
+                futures[fut] = topic
+                off += wc
+
+        # Aggregate per-topic results
+        _topic_agg = defaultdict(lambda: {"delivered": 0, "errors": 0, "elapsed": 0.0})
         for fut in as_completed(futures):
             topic, delivered, errors, elapsed = fut.result()
-            produce_results[topic] = {
-                "delivered": delivered, "errors": errors, "elapsed": elapsed,
-            }
-            rate = delivered / elapsed if elapsed > 0 else 0
-            print(f"      {topic:<20s}  {delivered:>10,} delivered  "
-                  f"{errors:>3} errors  {elapsed:.2f}s  ({rate:>10,.0f} msg/s)")
+            _topic_agg[topic]["delivered"] += delivered
+            _topic_agg[topic]["errors"] += errors
+            _topic_agg[topic]["elapsed"] = max(_topic_agg[topic]["elapsed"], elapsed)
+
+        produce_results = dict(_topic_agg)
+        for topic, r in produce_results.items():
+            rate = r["delivered"] / r["elapsed"] if r["elapsed"] > 0 else 0
+            print(f"      {topic:<20s}  {r['delivered']:>10,} delivered  "
+                  f"{r['errors']:>3} errors  {r['elapsed']:.2f}s  ({rate:>10,.0f} msg/s)")
 
     t_produce = time.perf_counter() - t_produce_start
     total_delivered = sum(r["delivered"] for r in produce_results.values())
@@ -693,6 +739,19 @@ def main():
     print(f"\n      TOTAL: {total_delivered:,} delivered | {total_errors} errors | "
           f"{t_produce:.2f}s | {produce_rate:,.0f} events/sec")
     print()
+
+    # ── Record producer EPS to pipeline_metrics for dashboard display ───
+    try:
+        from urllib.request import urlopen, Request
+        from urllib.parse import urlencode
+        _ch_http = os.getenv("CH_HTTP_PORT", "8123")
+        _qs = urlencode({"user": CH_USER, "password": CH_PASS, "database": CH_DB})
+        _sql = f"INSERT INTO clif_logs.pipeline_metrics (metric, value) VALUES ('producer_eps', {produce_rate})"
+        _rq = Request(f"http://{CH_HOST}:{_ch_http}/?{_qs}", data=_sql.encode())
+        urlopen(_rq, timeout=5)
+        print(f"      ✓ Recorded producer EPS ({produce_rate:,.0f}) to pipeline_metrics")
+    except Exception as _e:
+        print(f"      ⚠ Could not record EPS to pipeline_metrics: {_e}")
 
     # ── Phase 4: Verify ingestion ─────────────────────────────────────────
     if args.skip_verify:

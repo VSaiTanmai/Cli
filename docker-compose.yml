@@ -5,6 +5,13 @@
 # Destroy: docker-compose down -v
 # =============================================================================
 
+# ── Logging defaults (prevents disk exhaustion) ──────────────────────────────
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 # ── Networks ─────────────────────────────────────────────────────────────────
 networks:
   clif-frontend:
@@ -326,6 +333,13 @@ services:
     depends_on:
       redpanda01:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/admin/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
     restart: unless-stopped
 
   # =========================================================================
@@ -505,11 +519,11 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
@@ -525,6 +539,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
@@ -553,11 +568,11 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
@@ -573,6 +588,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
@@ -600,11 +616,11 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
@@ -620,6 +636,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
@@ -725,7 +742,7 @@ services:
     container_name: clif-grafana
     hostname: grafana
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-clif_grafana_change_me}
@@ -786,6 +803,13 @@ services:
     networks:
       - clif-backend
       - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.settimeout(2); s.connect((\"clickhouse01\",9000)); s.close()' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
@@ -830,6 +854,13 @@ services:
     networks:
       - clif-backend
       - clif-frontend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8100/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:

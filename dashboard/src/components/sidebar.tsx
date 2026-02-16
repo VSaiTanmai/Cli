@@ -10,7 +10,6 @@ import {
   Search,
   ShieldAlert,
   FolderSearch,
-  Network,
   Bot,
   Radar,
   Lock,
@@ -42,7 +41,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/search", label: "Search", icon: Search },
       { href: "/investigations", label: "Investigations", icon: FolderSearch },
-      { href: "/attack-graph", label: "Attack Graph", icon: Network },
+
     ],
   },
   {

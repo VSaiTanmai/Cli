@@ -1,7 +1,7 @@
 {
   "benchmark": "CLIF Enterprise SIEM Benchmark v1.0",
-  "timestamp": "2026-02-14 16:49:03 UTC",
-  "total_duration_sec": 43.99,
+  "timestamp": "2026-02-16 14:19:04 UTC",
+  "total_duration_sec": 28.67,
   "profile": {
     "events": 500000,
     "duration": 60,
@@ -16,28 +16,30 @@
     "vector": "v0.42.0, 4GB, 7 sources, 4 sinks",
     "consumers": "3x Python, HA failover",
     "minio": "3-node erasure coding",
-    "containers": 18
+    "containers": 17
   },
   "results": {
     "sustained": {
       "total_produced": 500000,
       "total_delivered": 500000,
       "total_errors": 0,
-      "duration_sec": 9.96,
-      "avg_eps": 50198,
-      "min_eps": 44105,
-      "max_eps": 60578,
-      "p50_eps": 47555,
-      "p95_eps": 44105,
-      "std_dev_eps": 6389,
+      "duration_sec": 6.21,
+      "flush_sec": 0.55,
+      "wall_sec": 6.76,
+      "avg_eps": 73942,
+      "min_eps": 76800,
+      "max_eps": 83869,
+      "p50_eps": 80685,
+      "p95_eps": 76800,
+      "std_dev_eps": 2515,
       "checksum_count": 0
     },
     "burst": {
       "burst_events": 200000,
       "delivered": 200000,
       "errors": 0,
-      "duration_sec": 3.91,
-      "burst_eps": 51214,
+      "duration_sec": 0.68,
+      "burst_eps": 294192,
       "data_loss_pct": 0.0
     },
     "latency": {
@@ -45,141 +47,144 @@
       "probes_found": 200,
       "probes_missing": 0,
       "completion_pct": 100.0,
-      "avg_latency_sec": 9.997,
-      "min_latency_sec": 2.088,
-      "max_latency_sec": 16.404,
-      "p50_latency_sec": 10.182,
-      "p95_latency_sec": 15.773,
-      "p99_latency_sec": 16.364,
-      "poll_rounds": 5
+      "avg_latency_sec": 0.344,
+      "min_latency_sec": 0.344,
+      "max_latency_sec": 0.344,
+      "p50_latency_sec": 0.344,
+      "p95_latency_sec": 0.344,
+      "p99_latency_sec": 0.344,
+      "poll_rounds": 2
     },
     "queries": {
       "total_queries": 16,
-      "successful_queries": 15,
-      "failed_queries": 1,
-      "total_time_ms": 971.1,
-      "avg_time_ms": 64.7,
-      "median_time_ms": 61.4,
-      "p95_time_ms": 95.7,
-      "max_time_ms": 95.7,
-      "slowest_query": "AI high-confidence alerts",
+      "successful_queries": 16,
+      "failed_queries": 0,
+      "total_time_ms": 1117.1,
+      "avg_time_ms": 69.8,
+      "median_time_ms": 65.0,
+      "p95_time_ms": 139.7,
+      "max_time_ms": 139.7,
+      "slowest_query": "Full-text: auth failed",
       "queries_under_100ms": 15,
-      "queries_under_500ms": 15,
+      "queries_under_500ms": 16,
       "detail": [
         {
           "query": "Total events (24h)",
-          "time_ms": 57.8,
+          "time_ms": 61.7,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Events by source (24h)",
-          "time_ms": 77.4,
-          "rows": 9,
+          "time_ms": 65.4,
+          "rows": 14,
           "status": "OK"
         },
         {
           "query": "Events by level (24h)",
-          "time_ms": 61.3,
-          "rows": 4,
+          "time_ms": 64.2,
+          "rows": 5,
           "status": "OK"
         },
         {
           "query": "Events per minute (1h)",
-          "time_ms": 67.0,
-          "rows": 1,
+          "time_ms": 63.5,
+          "rows": 10,
           "status": "OK"
         },
         {
           "query": "High severity events (7d)",
-          "time_ms": 58.3,
+          "time_ms": 56.4,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Top attacked users (24h)",
-          "time_ms": 55.1,
+          "time_ms": 64.5,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Attack technique dist",
-          "time_ms": 68.8,
-          "rows": 10,
+          "time_ms": 65.7,
+          "rows": 1009,
           "status": "OK"
         },
         {
           "query": "AI high-confidence alerts",
-          "time_ms": 95.7,
+          "time_ms": 69.1,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Network top talkers",
-          "time_ms": 32.9,
+          "time_ms": 95.8,
           "rows": 10,
           "status": "OK"
         },
         {
           "query": "Geo distribution",
-          "time_ms": 72.3,
-          "rows": 6,
+          "time_ms": 32.1,
+          "rows": 7,
           "status": "OK"
         },
         {
           "query": "Suspicious connections",
-          "time_ms": 58.8,
+          "time_ms": 63.8,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Suspicious processes (7d)",
-          "time_ms": 61.4,
+          "time_ms": 68.9,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Process by hostname",
-          "time_ms": 61.2,
+          "time_ms": 83.0,
           "rows": 10,
           "status": "OK"
         },
         {
           "query": "Full-text: auth failed",
-          "time_ms": 68.1,
+          "time_ms": 139.7,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Full-text: powershell",
-          "time_ms": 75.1,
+          "time_ms": 56.6,
           "rows": 1,
           "status": "OK"
         },
         {
           "query": "Cross-table: suspicious IPs",
-          "time_ms": -1,
+          "time_ms": 66.8,
           "rows": 0,
-          "status": "ERROR: Received ClickHouse exception, code: 386, server response: C"
+          "status": "OK"
         }
       ]
     },
     "concurrent": {
       "concurrent_queries": 8,
-      "successful": 7,
-      "failed": 1,
-      "total_wall_time_ms": 299.6,
-      "avg_latency_ms": 93.7,
-      "p50_latency_ms": 92.1,
-      "p95_latency_ms": 128.8,
-      "max_latency_ms": 128.8,
-      "qps": 23.4
+      "rounds_per_analyst": 4,
+      "total_queries_attempted": 32,
+      "successful": 28,
+      "failed": 4,
+      "analysts_all_ok": 4,
+      "total_wall_time_ms": 917.3,
+      "avg_latency_ms": 197.0,
+      "p50_latency_ms": 188.3,
+      "p95_latency_ms": 412.0,
+      "max_latency_ms": 480.8,
+      "qps": 30.5
     },
     "resources": {
-      "containers": 18,
-      "total_memory_mb": 5910.0,
-      "memory_per_eps_mb": 0.1177,
-      "eps_per_gb_memory": 8698.0
+      "containers": 17,
+      "total_memory_mb": 4509.8,
+      "memory_per_eps_mb": 0.061,
+      "eps_per_gb_memory": 16789.0
     },
     "lag": {
       "topics": {
@@ -208,12 +213,12 @@
       "found": 700200,
       "data_loss": 0,
       "data_loss_pct": 0,
-      "verification_time_sec": 6.68,
+      "verification_time_sec": 6.66,
       "table_counts": {
-        "raw_logs": 104989,
-        "security_events": 244792,
-        "process_events": 175272,
-        "network_events": 175147
+        "raw_logs": 105048,
+        "security_events": 245022,
+        "process_events": 175532,
+        "network_events": 174598
       },
       "zero_loss": true
     }

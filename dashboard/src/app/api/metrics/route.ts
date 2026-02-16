@@ -10,7 +10,7 @@ const PROM_URL = process.env.PROMETHEUS_URL || "http://localhost:9090";
 const PROM_TIMEOUT_MS = 8_000;
 
 /** Cache TTL for dashboard metrics — balances freshness vs. query cost */
-const METRICS_CACHE_TTL_MS = 5_000;
+const METRICS_CACHE_TTL_MS = 2_000;
 
 async function fetchUptime(): Promise<string> {
   const controller = new AbortController();
@@ -53,9 +53,22 @@ export async function GET(request: Request) {
           ),
           queryClickHouse<{ eps: string }>(
             `SELECT greatest(
-               (SELECT sum(event_count) / 60 FROM clif_logs.events_per_minute WHERE minute >= now() - INTERVAL 1 MINUTE),
-               (SELECT sum(event_count) / greatest(1, dateDiff('second', min(minute), max(minute)))
-                FROM clif_logs.events_per_minute WHERE minute >= now() - INTERVAL 5 MINUTE)
+               (SELECT sum(event_count) / 10
+                FROM clif_logs.events_per_10s
+                WHERE ts >= now() - INTERVAL 10 SECOND),
+               (SELECT sum(event_count) / greatest(10, dateDiff('second', min(ts), max(ts) + INTERVAL 10 SECOND))
+                FROM clif_logs.events_per_10s
+                WHERE ts >= now() - INTERVAL 60 SECOND),
+               (SELECT max(bin_total) / 10 FROM (
+                  SELECT sum(event_count) AS bin_total
+                  FROM clif_logs.events_per_10s
+                  WHERE ts >= now() - INTERVAL 1 HOUR
+                  GROUP BY ts)),
+               (SELECT coalesce(value, 0)
+                FROM clif_logs.pipeline_metrics
+                WHERE metric = 'producer_eps'
+                  AND ts >= now() - INTERVAL 5 MINUTE
+                ORDER BY ts DESC LIMIT 1)
              ) AS eps`
           ),
           queryClickHouse<{ cnt: string }>(
@@ -80,11 +93,11 @@ export async function GET(request: Request) {
              ORDER BY severity`
           ),
           queryClickHouse<{ minute: string; cnt: string }>(
-            `SELECT minute, sum(event_count) AS cnt
-             FROM clif_logs.events_per_minute
-             WHERE minute >= now() - INTERVAL 24 HOUR
-             GROUP BY minute
-             ORDER BY minute`
+            `SELECT ts AS minute, sum(event_count) AS cnt
+             FROM clif_logs.events_per_10s
+             WHERE ts >= now() - INTERVAL 30 MINUTE
+             GROUP BY ts
+             ORDER BY ts`
           ),
           fetchUptime(),
           queryClickHouse<{ cnt: string }>(

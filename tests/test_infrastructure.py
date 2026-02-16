@@ -262,7 +262,12 @@ class TestRedpandaCluster:
         assert len(md.brokers) >= 1, "No brokers responded"
 
     def test_three_brokers(self, kafka_admin):
-        md = kafka_admin.list_topics(timeout=10)
+        import time as _time
+        for _ in range(5):
+            md = kafka_admin.list_topics(timeout=10)
+            if len(md.brokers) >= 3:
+                break
+            _time.sleep(2)
         assert len(md.brokers) >= 3, f"Expected 3 brokers, got {len(md.brokers)}"
 
     @pytest.mark.parametrize("topic", EXPECTED_TOPICS)
@@ -370,7 +375,7 @@ class TestMonitoring:
         assert data.get("status") == "success"
 
     def test_grafana_healthy(self):
-        resp = requests.get("http://localhost:3000/api/health", timeout=10)
+        resp = requests.get("http://localhost:3002/api/health", timeout=10)
         assert resp.status_code == 200
         data = resp.json()
         assert data.get("database") == "ok"

@@ -44,6 +44,7 @@ function KpiCard({
   icon: Icon,
   loading,
   accent,
+  live,
 }: {
   title: string;
   value: string;
@@ -51,14 +52,21 @@ function KpiCard({
   icon: React.ElementType;
   loading: boolean;
   accent?: string;
+  live?: boolean;
 }) {
   return (
     <Card>
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               {title}
+              {live && (
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+              )}
             </p>
             {loading ? (
               <Skeleton className="h-8 w-24" />
@@ -99,17 +107,18 @@ function ChartTooltipContent({
 }
 
 export default function DashboardPage() {
-  const { data, loading } = usePolling<DashboardMetrics>(
+  const { data, loading, error } = usePolling<DashboardMetrics>(
     "/api/metrics",
-    5000
+    2000
   );
 
   const uptime = data?.uptime ? `${data.uptime}%` : "—";
 
   const timelineData = (data?.eventsTimeline ?? []).map((d) => ({
-    time: new Date(d.time).toLocaleTimeString("en-US", {
+    time: new Date(d.time + "Z").toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
+      second: "2-digit",
     }),
     count: d.count,
   }));
@@ -130,6 +139,19 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="flex items-center gap-3 p-4">
+            <ShieldAlert className="h-5 w-5 text-destructive shrink-0" />
+            <div className="flex-1 text-sm">
+              <p className="font-medium text-destructive">Failed to load metrics</p>
+              <p className="text-xs text-muted-foreground">{error} — retrying with exponential backoff</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPI Row */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -142,9 +164,11 @@ export default function DashboardPage() {
         <KpiCard
           title="Ingestion Rate"
           value={data ? formatRate(data.ingestRate) : "—"}
-          subtitle="Current throughput"
+          subtitle={data && data.ingestRate > 0 ? "Live — ingesting now" : "Current throughput"}
           icon={TrendingUp}
           loading={loading}
+          accent={data && data.ingestRate > 0 ? "text-green-400" : undefined}
+          live={!!(data && data.ingestRate > 0)}
         />
         <KpiCard
           title="Active Alerts"
@@ -172,7 +196,7 @@ export default function DashboardPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Activity className="h-4 w-4 text-primary" />
-              Events / Minute
+              Ingestion Rate
               <span className="ml-auto text-xs text-muted-foreground">
                 {timelineData.length > 0 ? `${timelineData.length} data points` : "Last 30 minutes"}
               </span>

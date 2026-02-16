@@ -79,6 +79,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 POLL_BATCH = int(os.getenv("CONSUMER_POLL_BATCH", "10000"))
 FLUSH_WORKERS = int(os.getenv("CONSUMER_FLUSH_WORKERS", "4"))
 
+# Dead-letter logging: count dropped messages per interval for observability
+DLQ_LOG_INTERVAL = int(os.getenv("DLQ_LOG_INTERVAL_SEC", "60"))
+
 # Topic → ClickHouse table mapping
 TOPIC_TABLE_MAP: dict[str, str] = {
     "raw-logs": "raw_logs",
@@ -432,6 +435,7 @@ class StatsReporter(Thread):
         self._lock = Lock()
         self._counts: dict[str, int] = {t: 0 for t in TOPICS}
         self._errors: int = 0
+        self._parse_errors: int = 0     # JSON / builder failures (DLQ candidates)
         self._flush_count: int = 0
         self._flush_rows: int = 0
         self._last_total: int = 0
@@ -444,6 +448,11 @@ class StatsReporter(Thread):
     def record_error(self, count: int = 1) -> None:
         with self._lock:
             self._errors += count
+
+    def record_parse_error(self, count: int = 1) -> None:
+        """Track JSON deserialization / row builder failures (potential DLQ events)."""
+        with self._lock:
+            self._parse_errors += count
 
     def record_flush(self, rows: int) -> None:
         with self._lock:
@@ -462,8 +471,9 @@ class StatsReporter(Thread):
                 self._last_time = now
                 log.info(
                     "Stats — total=%d  rate=%.0f msg/s  flushes=%d  flush_rows=%d  "
-                    "errors=%d  %s",
-                    total, rate, self._flush_count, self._flush_rows, self._errors,
+                    "errors=%d  parse_drops=%d  %s",
+                    total, rate, self._flush_count, self._flush_rows,
+                    self._errors, self._parse_errors,
                     "  ".join(f"{t}={c}" for t, c in self._counts.items()),
                 )
 
@@ -679,12 +689,14 @@ def main() -> None:
                     payload = _json_loads(raw_msg.value())
                 except (ValueError, UnicodeDecodeError, TypeError):
                     error_count += 1
+                    stats.record_parse_error()
                     continue
 
                 try:
                     row = TABLE_META[table]["builder"](payload)
                 except Exception:
                     error_count += 1
+                    stats.record_parse_error()
                     continue
 
                 # Distribute row values into columnar buffers

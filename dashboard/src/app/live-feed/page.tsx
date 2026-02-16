@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { severityLabel, severityBgColor, timeAgo, formatNumber } from "@/lib/utils";
-import { Radio, Pause, Play, ArrowDown, Filter, RotateCcw, Database } from "lucide-react";
+import { Radio, Pause, Play, ArrowDown, Filter, RotateCcw, Database, AlertTriangle } from "lucide-react";
 import type { EventRow } from "@/lib/types";
 
 const MAX_ROWS = 2000;
@@ -128,6 +128,12 @@ export default function LiveFeedPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {rate > 500 && (
+            <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-medium">High throughput — UI may lag</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5 rounded-md border px-3 py-1.5">
             <div className={`h-2 w-2 rounded-full ${paused ? "bg-muted-foreground" : "bg-emerald-500 animate-pulse"}`} />
             <span className="text-xs font-medium tabular-nums">
@@ -207,6 +213,9 @@ export default function LiveFeedPage() {
           </Button>
           <span className="ml-auto text-xs text-muted-foreground tabular-nums">
             {formatNumber(filtered.length)} / {formatNumber(events.length)} shown
+            {filtered.length > 500 && (
+              <span className="ml-1 text-amber-400">(rendering top 500)</span>
+            )}
           </span>
         </CardContent>
       </Card>
@@ -282,7 +291,7 @@ export default function LiveFeedPage() {
                         <span className={`inline-flex rounded-sm border px-1.5 py-0.5 text-[9px] font-medium ${
                           event._table === "security_events" ? "bg-red-500/10 text-red-400 border-red-500/20" :
                           event._table === "process_events" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                          event._table === "network_events" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                          event._table === "network_events" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" :
                           "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
                         }`}>
                           {event._table?.replace("_events", "").replace("_logs", "") ?? "raw"}

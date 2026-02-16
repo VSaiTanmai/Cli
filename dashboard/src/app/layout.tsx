@@ -4,6 +4,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { KeyboardShortcutsProvider } from "@/components/keyboard-shortcuts-provider";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -45,6 +46,7 @@ export default function RootLayout({
             className: "text-sm",
           }}
         />
+        <KeyboardShortcutsProvider />
       </body>
     </html>
   );

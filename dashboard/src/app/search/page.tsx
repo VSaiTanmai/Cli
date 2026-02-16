@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
   Database,
   AlertCircle,
   Sparkles,
+  Link2,
 } from "lucide-react";
 import type { EventRow } from "@/lib/types";
 import { toast } from "sonner";
@@ -49,22 +51,55 @@ function getTimeFrom(range: string): string {
   return new Date(now.getTime() - (map[range] ?? 60 * 60 * 1000)).toISOString();
 }
 
-export default function SearchPage() {
-  const [query, setQuery] = useState("");
-  const [table, setTable] = useState("raw_logs");
-  const [timeRange, setTimeRange] = useState("24h");
-  const [severity, setSeverity] = useState("");
+function SearchPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Initialise from URL params (shareable links)
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [table, setTable] = useState(searchParams.get("table") ?? "raw_logs");
+  const [timeRange, setTimeRange] = useState(searchParams.get("range") ?? "24h");
+  const [severity, setSeverity] = useState(searchParams.get("severity") ?? "");
   const [results, setResults] = useState<EventRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
-  const [aiMode, setAiMode] = useState(false);
+  const [aiMode, setAiMode] = useState(searchParams.get("ai") === "1");
   const [similarity, setSimilarity] = useState<number[]>([]);
   const aiToggledRef = useRef(false);
 
   const PAGE_SIZE = 50;
+
+  /** Push current filters into the URL without a full navigation */
+  const syncUrl = useCallback(
+    (overrides?: { q?: string; table?: string; range?: string; severity?: string; ai?: boolean }) => {
+      const params = new URLSearchParams();
+      const q = overrides?.q ?? query;
+      const t = overrides?.table ?? table;
+      const r = overrides?.range ?? timeRange;
+      const s = overrides?.severity ?? severity;
+      const a = overrides?.ai ?? aiMode;
+      if (q) params.set("q", q);
+      if (t && t !== "raw_logs") params.set("table", t);
+      if (r && r !== "24h") params.set("range", r);
+      if (s) params.set("severity", s);
+      if (a) params.set("ai", "1");
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [query, table, timeRange, severity, aiMode, pathname, router],
+  );
+
+  /** Copy shareable link to clipboard */
+  const copyLink = useCallback(() => {
+    syncUrl();
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      toast.success("Search link copied to clipboard");
+    });
+  }, [syncUrl]);
 
   const doSearch = useCallback(
     async (offset: number = 0) => {
@@ -126,6 +161,7 @@ export default function SearchPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    syncUrl();
     doSearch(0);
   };
 
@@ -163,6 +199,7 @@ export default function SearchPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  data-search-input="true"
                   placeholder='Search events — e.g. "lateral movement", "C102", "mimikatz"'
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -273,6 +310,14 @@ export default function SearchPage() {
                 {query && ` for "${query}"`}
               </span>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 text-xs h-7"
+                  onClick={copyLink}
+                >
+                  <Link2 className="h-3 w-3" /> Share Link
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -436,5 +481,13 @@ export default function SearchPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense>
+      <SearchPageInner />
+    </Suspense>
   );
 }
