@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from inference.inference import CLIFClassifier, map_clif_event_to_features
 from agents.orchestrator import Orchestrator
+from agents.llm import get_llm_status, is_llm_available
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
@@ -194,6 +195,8 @@ async def lifespan(app: FastAPI):
         ch_pass = os.getenv("CLICKHOUSE_PASSWORD", "Cl1f_Ch@ngeM3_2026!")
         ch_db = os.getenv("CLICKHOUSE_DB", "clif_logs")
         lance_url = os.getenv("LANCEDB_URL", "http://localhost:8100")
+        ollama_model = os.getenv("OLLAMA_MODEL", None)
+        ollama_url = os.getenv("OLLAMA_BASE_URL", None)
 
         orchestrator = Orchestrator(
             classifier=classifier,
@@ -202,8 +205,10 @@ async def lifespan(app: FastAPI):
             clickhouse_password=ch_pass,
             clickhouse_db=ch_db,
             lancedb_url=lance_url,
+            ollama_model=ollama_model,
+            ollama_base_url=ollama_url,
         )
-        print("[AI-Service] Agent orchestrator initialised (4 agents)")
+        print("[AI-Service] Agent orchestrator initialised (4 agents + DSPy/Ollama LLM)")
     except Exception as e:
         print(f"[AI-Service] WARNING: Could not init orchestrator: {e}")
         orchestrator = None
@@ -233,13 +238,22 @@ app.add_middleware(
 @app.get("/health")
 async def health():
     """Health check endpoint."""
+    llm = get_llm_status()
     return {
         "status": "healthy" if classifier else "degraded",
         "model_loaded": classifier is not None,
         "orchestrator_ready": orchestrator is not None,
         "agents": len(orchestrator.agents) if orchestrator else 0,
+        "llm_available": llm.get("available", False),
+        "llm_model": llm.get("model", ""),
         "service": "clif-ai-service",
     }
+
+
+@app.get("/llm/status")
+async def llm_status():
+    """Return DSPy/Ollama LLM integration status."""
+    return get_llm_status()
 
 
 @app.get("/model/info")

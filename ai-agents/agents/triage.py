@@ -40,6 +40,7 @@ from .classifiers import (
     FirewallLogClassifier,
     GenericLogClassifier,
 )
+from .llm import is_llm_available, llm_triage
 
 logger = logging.getLogger("clif.triage")
 
@@ -163,6 +164,80 @@ class TriageAgent(BaseAgent):
         else:
             return self._generic.classify(event)
 
+    # -- DSPy LLM Enhancement ------------------------------------------------
+
+    LLM_RECLASSIFY_THRESHOLD = 0.75  # Re-classify with LLM when confidence < this
+
+    def _llm_enhance(self, result: Dict[str, Any], event: Dict[str, Any], log_type: LogType) -> Dict[str, Any]:
+        """
+        Use DSPy/Ollama to re-classify ambiguous events.
+        Only called when rule-based confidence is below LLM_RECLASSIFY_THRESHOLD.
+        Returns enriched result dict (or original if LLM unavailable).
+        """
+        import json
+
+        if not is_llm_available():
+            return result
+
+        try:
+            # Prepare compact event data for LLM
+            event_str = json.dumps(
+                {k: v for k, v in event.items() if v is not None and v != ""},
+                default=str,
+            )[:2000]
+
+            initial = (
+                f"Category={result.get('category', 'Unknown')}, "
+                f"Severity={result.get('severity', 'info')}, "
+                f"Confidence={result.get('confidence', 0):.2f}, "
+                f"Attack={result.get('is_attack', False)}"
+            )
+
+            llm_result = llm_triage(
+                log_type=log_type.value,
+                event_data=event_str,
+                initial_classification=initial,
+            )
+
+            if llm_result is None:
+                return result
+
+            # Merge LLM insights — LLM can upgrade severity & fill MITRE gaps
+            logger.info(
+                "LLM triage: category=%s severity=%s conf=%.2f mitre=%s/%s",
+                llm_result.get("category"),
+                llm_result.get("severity"),
+                llm_result.get("confidence", 0),
+                llm_result.get("mitre_tactic"),
+                llm_result.get("mitre_technique"),
+            )
+
+            # If LLM is more confident, take its classification
+            if llm_result.get("confidence", 0) > result.get("confidence", 0):
+                result["category"] = llm_result["category"]
+                result["confidence"] = llm_result["confidence"]
+                result["severity"] = llm_result["severity"]
+                result["is_attack"] = llm_result["severity"] in ("critical", "high", "medium")
+
+            # Always fill MITRE gaps from LLM
+            if not result.get("mitre_tactic") and llm_result.get("mitre_tactic"):
+                result["mitre_tactic"] = llm_result["mitre_tactic"]
+            if not result.get("mitre_technique") and llm_result.get("mitre_technique"):
+                result["mitre_technique"] = llm_result["mitre_technique"]
+
+            # Append LLM reasoning to explanation
+            if llm_result.get("reasoning"):
+                result["explanation"] = (
+                    result.get("explanation", "") +
+                    f" [LLM] {llm_result['reasoning']}"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.warning("LLM triage enhancement failed: %s", e)
+            return result
+
     # -- Main execution -------------------------------------------------------
 
     async def _execute(self, ctx: InvestigationContext) -> InvestigationContext:
@@ -178,8 +253,18 @@ class TriageAgent(BaseAgent):
             ctx.investigation_id, log_type.value, classifier_name,
         )
 
-        # -- Step 2: Classify -------------------------------------------------
+        # -- Step 2: Classify (rule-based / ML) -------------------------------
         result = self._classify_event(event, log_type)
+
+        # -- Step 2b: DSPy/LLM Enhancement (ambiguous events only) ------------
+        if result.get("confidence", 0.0) < self.LLM_RECLASSIFY_THRESHOLD:
+            logger.info(
+                "[%s] Confidence %.2f < %.2f — invoking DSPy/LLM for re-classification",
+                ctx.investigation_id, result.get("confidence", 0), self.LLM_RECLASSIFY_THRESHOLD,
+            )
+            result = self._llm_enhance(result, event, log_type)
+            if "[LLM]" in result.get("explanation", ""):
+                classifier_name += "+dspy"
 
         # -- Step 3: Priority Assignment --------------------------------------
         severity = result.get("severity", "info")
@@ -211,11 +296,12 @@ class TriageAgent(BaseAgent):
         ctx.status = "triaged"
 
         # -- Log action -------------------------------------------------------
+        llm_tag = " [DSPy-enhanced]" if "+dspy" in classifier_name else ""
         if triage.is_attack:
             self._last_action = (
                 f"[{log_type.value}] Classified as {triage.category} attack "
                 f"(confidence: {triage.confidence:.2f}, priority: {triage.priority}, "
-                f"classifier: {classifier_name}). "
+                f"classifier: {classifier_name}){llm_tag}. "
                 f"MITRE: {triage.mitre_tactic}/{triage.mitre_technique}. "
                 f"Forwarding to Hunter Agent."
             )
@@ -223,7 +309,7 @@ class TriageAgent(BaseAgent):
             self._last_action = (
                 f"[{log_type.value}] Classified as benign "
                 f"(confidence: {triage.confidence:.2f}, "
-                f"classifier: {classifier_name}). No further action required."
+                f"classifier: {classifier_name}){llm_tag}. No further action required."
             )
 
         return ctx

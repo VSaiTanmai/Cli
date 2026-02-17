@@ -13,6 +13,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -22,6 +23,9 @@ from .base import (
     ReportData,
     ReportSection,
 )
+from .llm import is_llm_available, llm_generate_narrative
+
+logger = logging.getLogger("clif.reporter")
 
 # ── MITRE ATT&CK Tactic descriptions ────────────────────────────────────────
 
@@ -539,6 +543,77 @@ class ReporterAgent(BaseAgent):
         # ── Executive summary ────────────────────────────────────────
         executive_summary = self._build_executive_summary(ctx)
 
+        # ── DSPy/LLM: Generate narrative ─────────────────────────────
+        llm_exec_summary = ""
+        llm_narrative = ""
+        llm_risk = ""
+
+        if is_llm_available() and triage.is_attack:
+            try:
+                triage_summ = (
+                    f"Category: {triage.category}, Severity: {triage.severity}, "
+                    f"Confidence: {triage.confidence:.2f}, Log type: {triage.log_type}, "
+                    f"MITRE: {triage.mitre_tactic}/{triage.mitre_technique}, "
+                    f"Classifier: {triage.classifier_used}. "
+                    f"Explanation: {triage.explanation[:200]}"
+                )
+
+                hunt_summ = "No hunt data"
+                if ctx.hunt:
+                    h = ctx.hunt
+                    hunt_summ = (
+                        f"Correlated events: {len(h.correlated_events)}, "
+                        f"Attack chain: {len(h.attack_chain)} steps, "
+                        f"Window: {h.temporal_window_sec:.0f}s, "
+                        f"Hosts: {', '.join(h.affected_hosts[:5])}, "
+                        f"IPs: {', '.join(h.affected_ips[:5])}, "
+                        f"Users: {', '.join(h.affected_users[:5])}, "
+                        f"MITRE: {', '.join(h.mitre_tactics)}"
+                    )
+                    if h.llm_attack_narrative:
+                        hunt_summ += f". LLM hypothesis: {h.llm_attack_narrative[:300]}"
+
+                verif_summ = "No verification data"
+                if ctx.verification:
+                    v = ctx.verification
+                    verif_summ = (
+                        f"Verdict: {v.verdict}, Adjusted confidence: {v.adjusted_confidence:.2f}, "
+                        f"FP score: {v.false_positive_score:.2f}, "
+                        f"Checks: {len(v.checks_passed)}/{len(v.checks_passed)+len(v.checks_failed)} passed. "
+                        f"Evidence: {v.evidence_summary[:200]}"
+                    )
+                    if v.llm_reasoning:
+                        verif_summ += f". LLM reasoning: {v.llm_reasoning[:200]}"
+
+                recs_str = "; ".join(recommendations[:5])
+
+                narr_result = llm_generate_narrative(
+                    investigation_id=ctx.investigation_id,
+                    triage_summary=triage_summ,
+                    hunt_summary=hunt_summ,
+                    verification_summary=verif_summ,
+                    recommendations=recs_str,
+                )
+
+                if narr_result:
+                    llm_exec_summary = narr_result.get("executive_summary", "")
+                    llm_narrative = narr_result.get("incident_narrative", "")
+                    llm_risk = narr_result.get("risk_rating", "")
+
+                    # Add LLM narrative as a dedicated report section
+                    if llm_narrative:
+                        sections.append(ReportSection(
+                            title="AI-Generated Incident Narrative (DSPy/LLM)",
+                            content=llm_narrative,
+                        ))
+
+                    logger.info(
+                        "[%s] LLM narrative generated: risk=%s, summary=%s...",
+                        ctx.investigation_id, llm_risk, (llm_exec_summary or "")[:80],
+                    )
+            except Exception as e:
+                logger.warning("LLM narrative generation failed: %s", e)
+
         # ── Build final report ───────────────────────────────────────
         verdict = ctx.verification.verdict if ctx.verification else "pending"
         report = ReportData(
@@ -554,17 +629,21 @@ class ReporterAgent(BaseAgent):
             affected_assets=affected_assets,
             timeline=timeline,
             generated_at=datetime.now(timezone.utc).isoformat(),
+            llm_executive_summary=llm_exec_summary,
+            llm_incident_narrative=llm_narrative,
+            llm_risk_rating=llm_risk,
         )
 
         ctx.report = report
         ctx.status = "reported"
 
         # ── Log action ───────────────────────────────────────────────
+        llm_tag = " [DSPy-enhanced]" if llm_narrative else ""
         self._last_action = (
             f"Generated investigation report for {ctx.investigation_id} — "
             f"{triage.category} ({verdict.replace('_', ' ').upper()}). "
             f"{len(sections)} sections, {len(recommendations)} recommendations, "
-            f"{len(mitre_mapping)} MITRE techniques mapped."
+            f"{len(mitre_mapping)} MITRE techniques mapped.{llm_tag}"
         )
 
         return ctx

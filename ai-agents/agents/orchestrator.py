@@ -23,6 +23,7 @@ from .triage import TriageAgent
 from .hunter import HunterAgent
 from .verifier import VerifierAgent
 from .reporter import ReporterAgent
+from .llm import configure_llm, is_llm_available, get_llm_status
 
 logger = logging.getLogger("clif.orchestrator")
 
@@ -30,6 +31,8 @@ logger = logging.getLogger("clif.orchestrator")
 class Orchestrator:
     """
     Runs the 4-agent investigation pipeline.
+    Optionally enhanced by DSPy/Ollama LLM for reasoning, hypothesis
+    generation, and narrative reporting.
 
     Usage:
         orch = Orchestrator()
@@ -44,6 +47,8 @@ class Orchestrator:
         clickhouse_password: str = "Cl1f_Ch@ngeM3_2026!",
         clickhouse_db: str = "clif_logs",
         lancedb_url: str = "http://localhost:8100",
+        ollama_model: str | None = None,
+        ollama_base_url: str | None = None,
     ):
         self.triage_agent = TriageAgent(classifier=classifier)
         self.hunter_agent = HunterAgent(
@@ -64,6 +69,15 @@ class Orchestrator:
 
         self._investigations: List[Dict[str, Any]] = []
 
+        # ── DSPy/LLM initialisation ─────────────────────────────────
+        llm_ok = configure_llm(model=ollama_model, base_url=ollama_base_url)
+        if llm_ok:
+            logger.info("DSPy/Ollama LLM integration active — all agents enhanced")
+        else:
+            logger.warning(
+                "DSPy/Ollama LLM unavailable — agents will use rule-based/ML only"
+            )
+
     @property
     def agents(self) -> list:
         return [
@@ -75,7 +89,14 @@ class Orchestrator:
 
     def get_agent_statuses(self) -> List[Dict[str, Any]]:
         """Return status of all agents for the dashboard."""
-        return [agent.stats for agent in self.agents]
+        statuses = [agent.stats for agent in self.agents]
+        # Append LLM status
+        statuses.append({
+            "name": "DSPy/Ollama LLM",
+            "description": "Local LLM via Ollama — enhances all agents with reasoning",
+            **get_llm_status(),
+        })
+        return statuses
 
     def get_recent_investigations(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return recent investigation summaries."""

@@ -122,6 +122,11 @@ class HuntData:
     temporal_window_sec: float = 0.0
     semantic_matches: int = 0
     clickhouse_matches: int = 0
+    # DSPy/LLM-generated hypothesis (optional)
+    llm_attack_narrative: str = ""
+    llm_hypotheses: str = ""
+    llm_recommended_queries: str = ""
+    llm_risk_assessment: str = ""
 
 
 @dataclass
@@ -137,6 +142,9 @@ class VerificationData:
     historical_similar_count: int = 0
     baseline_deviation: float = 0.0
     recommendation: str = ""
+    # DSPy/LLM-generated reasoning (optional)
+    llm_reasoning: str = ""
+    llm_additional_checks: str = ""
 
 
 @dataclass
@@ -160,8 +168,10 @@ class ReportData:
     recommendations: List[str] = field(default_factory=list)
     affected_assets: Dict[str, List[str]] = field(default_factory=dict)
     timeline: List[Dict[str, str]] = field(default_factory=list)
-    generated_at: str = ""
-
+    generated_at: str = ""    # DSPy/LLM-generated narrative (optional)
+    llm_executive_summary: str = ""
+    llm_incident_narrative: str = ""
+    llm_risk_rating: str = ""
 
 @dataclass
 class InvestigationContext:

@@ -31,6 +31,7 @@ from .base import (
     HuntData,
     InvestigationContext,
 )
+from .llm import is_llm_available, llm_hypothesis
 
 logger = logging.getLogger("clif.hunter")
 
@@ -639,6 +640,50 @@ class HunterAgent(BaseAgent):
         else:
             window_sec = 0.0
 
+        # ── DSPy/LLM: Generate threat hypotheses ─────────────────────
+        llm_narrative = ""
+        llm_hypo = ""
+        llm_queries = ""
+        llm_risk = ""
+
+        if is_llm_available() and triage.is_attack:
+            import json
+            alert_summary = (
+                f"Category: {triage.category}, Severity: {triage.severity}, "
+                f"Confidence: {triage.confidence:.2f}, Priority: {triage.priority}, "
+                f"MITRE: {triage.mitre_tactic}/{triage.mitre_technique}, "
+                f"Log type: {log_type}, Classifier: {triage.classifier_used}, "
+                f"Matched rules: {', '.join(triage.matched_rules) if triage.matched_rules else 'N/A'}"
+            )
+
+            corr_summary_items = []
+            for c in correlated[:10]:  # Top 10 for LLM context
+                corr_summary_items.append({
+                    "table": c.source_table,
+                    "category": c.category,
+                    "type": c.correlation_type,
+                    "desc": c.description[:100],
+                })
+            corr_str = json.dumps(corr_summary_items, default=str)[:2000]
+
+            try:
+                hypo = llm_hypothesis(
+                    alert_summary=alert_summary,
+                    correlated_events=corr_str,
+                    log_type=log_type,
+                )
+                if hypo:
+                    llm_narrative = hypo.get("attack_narrative", "")
+                    llm_hypo = hypo.get("hypotheses", "")
+                    llm_queries = hypo.get("recommended_queries", "")
+                    llm_risk = hypo.get("risk_assessment", "")
+                    logger.info(
+                        "[%s] LLM hypothesis generated: %s",
+                        ctx.investigation_id, llm_narrative[:100],
+                    )
+            except Exception as e:
+                logger.warning("LLM hypothesis generation failed: %s", e)
+
         # ── Build result ─────────────────────────────────────────────
         hunt = HuntData(
             correlated_events=correlated,
@@ -651,18 +696,23 @@ class HunterAgent(BaseAgent):
             temporal_window_sec=round(window_sec, 1),
             semantic_matches=len(sem_results),
             clickhouse_matches=len(sec_events) + len(net_events) + len(proc_events) + len(raw_events),
+            llm_attack_narrative=llm_narrative,
+            llm_hypotheses=llm_hypo,
+            llm_recommended_queries=llm_queries,
+            llm_risk_assessment=llm_risk,
         )
 
         ctx.hunt = hunt
         ctx.status = "hunted"
 
+        llm_tag = " [DSPy-enhanced]" if llm_narrative else ""
         self._last_action = (
             f"Investigated {triage.category} attack — "
             f"found {len(correlated)} correlated events "
             f"({hunt.clickhouse_matches} from ClickHouse, {hunt.semantic_matches} semantic). "
             f"Affected: {len(hunt.affected_hosts)} hosts, {len(hunt.affected_ips)} IPs. "
             f"MITRE: {', '.join(hunt.mitre_tactics)}. "
-            f"Attack chain: {len(attack_chain)} steps over {window_sec:.0f}s."
+            f"Attack chain: {len(attack_chain)} steps over {window_sec:.0f}s.{llm_tag}"
         )
 
         return ctx

@@ -24,6 +24,7 @@ from .base import (
     Verdict,
     VerificationData,
 )
+from .llm import is_llm_available, llm_verdict
 
 logger = logging.getLogger("clif.verifier")
 
@@ -552,6 +553,72 @@ class VerifierAgent(BaseAgent):
             evidence_parts.append(f"Threat intel: {len(ti_results)} IOC matches")
         evidence_summary = " | ".join(evidence_parts)
 
+        # ── DSPy/LLM: Verdict reasoning ─────────────────────────────
+        llm_reasoning_text = ""
+        llm_add_checks = ""
+
+        if is_llm_available() and triage.is_attack:
+            try:
+                triage_summ = (
+                    f"Category: {triage.category}, Severity: {triage.severity}, "
+                    f"Confidence: {triage.confidence:.2f}, Log type: {triage.log_type}, "
+                    f"Classifier: {triage.classifier_used}, "
+                    f"MITRE: {triage.mitre_tactic}/{triage.mitre_technique}, "
+                    f"Rules: {', '.join(triage.matched_rules) if triage.matched_rules else 'N/A'}"
+                )
+
+                hunt_summ = "No hunt data"
+                if hunt:
+                    hunt_summ = (
+                        f"Correlated events: {len(hunt.correlated_events)}, "
+                        f"Attack chain: {len(hunt.attack_chain)} steps, "
+                        f"Affected hosts: {', '.join(hunt.affected_hosts[:5])}, "
+                        f"Affected IPs: {', '.join(hunt.affected_ips[:5])}, "
+                        f"MITRE: {', '.join(hunt.mitre_tactics)}"
+                    )
+                    if hunt.llm_attack_narrative:
+                        hunt_summ += f", LLM narrative: {hunt.llm_attack_narrative[:200]}"
+
+                fp_summ = (
+                    f"FP score: {fp_score:.2f}, "
+                    f"Matched patterns: {'; '.join(fp_matches) if fp_matches else 'None'}, "
+                    f"Checks passed: {len(checks_passed)}/{len(checks_passed)+len(checks_failed)}, "
+                    f"Rule-based verdict: {verdict}, Adjusted conf: {adjusted_confidence:.2f}"
+                )
+
+                llm_result = llm_verdict(
+                    triage_summary=triage_summ,
+                    hunt_summary=hunt_summ,
+                    fp_analysis=fp_summ,
+                )
+
+                if llm_result:
+                    llm_reasoning_text = llm_result.get("reasoning", "")
+                    llm_add_checks = llm_result.get("additional_checks", "")
+
+                    # If LLM verdict disagrees, note it but don't override
+                    llm_v = llm_result.get("verdict", "")
+                    if llm_v and llm_v != verdict:
+                        logger.info(
+                            "[%s] LLM verdict (%s) differs from rule-based (%s) — noting divergence",
+                            ctx.investigation_id, llm_v, verdict,
+                        )
+                        checks_performed.append(
+                            f"LLM verdict reasoning: {llm_v} (rule-based: {verdict}) — "
+                            f"reasoning: {llm_reasoning_text[:150]}"
+                        )
+                    else:
+                        checks_performed.append(
+                            f"LLM verdict reasoning confirms: {verdict} — {llm_reasoning_text[:150]}"
+                        )
+
+                    logger.info(
+                        "[%s] LLM verdict reasoning: %s",
+                        ctx.investigation_id, llm_reasoning_text[:100],
+                    )
+            except Exception as e:
+                logger.warning("LLM verdict reasoning failed: %s", e)
+
         # ── Build result ─────────────────────────────────────────────
         ctx.verification = VerificationData(
             verdict=verdict,
@@ -564,14 +631,17 @@ class VerifierAgent(BaseAgent):
             historical_similar_count=hist_count,
             baseline_deviation=0.0,
             recommendation=recommendation,
+            llm_reasoning=llm_reasoning_text,
+            llm_additional_checks=llm_add_checks,
         )
         ctx.status = "verified"
 
+        llm_tag = " [DSPy-enhanced]" if llm_reasoning_text else ""
         self._last_action = (
             f"Verified {triage.category} alert — verdict: {verdict.upper()} "
             f"(adjusted confidence: {adjusted_confidence:.1%}). "
             f"{len(checks_passed)}/{len(checks_passed)+len(checks_failed)} checks passed. "
-            f"FP score: {fp_score:.2f}. {recommendation[:80]}"
+            f"FP score: {fp_score:.2f}. {recommendation[:80]}{llm_tag}"
         )
 
         return ctx
