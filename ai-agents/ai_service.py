@@ -1,15 +1,17 @@
-"""
-CLIF AI Service — FastAPI REST API for ML Classification
-=========================================================
-Exposes HTTP endpoints for real-time security event classification.
-Used by the CLIF dashboard and pipeline for AI-powered analysis.
+"""CLIF AI Service - FastAPI REST API for ML Classification & Agent Orchestration
+================================================================================
+Exposes HTTP endpoints for ML classification and AI agent investigation pipeline.
 
 Endpoints:
-  POST /classify          - Classify a single event
-  POST /classify/batch    - Classify multiple events
-  GET  /health            - Health check
-  GET  /model/info        - Model metadata
-  GET  /model/leaderboard - Training leaderboard
+  POST /classify              - Classify a single event
+  POST /classify/batch        - Classify multiple events
+  POST /investigate           - Full 4-agent investigation pipeline
+  POST /investigate/triage    - Quick triage only
+  GET  /agents/status         - All agent statuses
+  GET  /agents/investigations - Recent investigation history
+  GET  /health                - Health check
+  GET  /model/info            - Model metadata
+  GET  /model/leaderboard     - Training leaderboard
 
 Run:
   uvicorn ai_service:app --host 0.0.0.0 --port 8200 --workers 2
@@ -32,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from inference.inference import CLIFClassifier, map_clif_event_to_features
+from agents.orchestrator import Orchestrator
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
@@ -152,25 +155,49 @@ class BatchClassifyResponse(BaseModel):
 # ── App ─────────────────────────────────────────────────────────────────────
 
 classifier: Optional[CLIFClassifier] = None
+orchestrator: Optional[Orchestrator] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load ML model on startup."""
-    global classifier
+    """Load ML model and initialise agent orchestrator on startup."""
+    global classifier, orchestrator
     try:
         classifier = CLIFClassifier()
         print("[AI-Service] ML classifier loaded successfully")
     except Exception as e:
         print(f"[AI-Service] WARNING: Could not load ML classifier: {e}")
         classifier = None
+
+    # Initialise orchestrator (shares the same classifier instance)
+    try:
+        ch_url = os.getenv("CLICKHOUSE_HTTP_URL", "http://localhost:8123")
+        ch_user = os.getenv("CLICKHOUSE_USER", "clif_admin")
+        ch_pass = os.getenv("CLICKHOUSE_PASSWORD", "Cl1f_Ch@ngeM3_2026!")
+        ch_db = os.getenv("CLICKHOUSE_DB", "clif_logs")
+        lance_url = os.getenv("LANCEDB_URL", "http://localhost:8100")
+
+        orchestrator = Orchestrator(
+            classifier=classifier,
+            clickhouse_url=ch_url,
+            clickhouse_user=ch_user,
+            clickhouse_password=ch_pass,
+            clickhouse_db=ch_db,
+            lancedb_url=lance_url,
+        )
+        print("[AI-Service] Agent orchestrator initialised (4 agents)")
+    except Exception as e:
+        print(f"[AI-Service] WARNING: Could not init orchestrator: {e}")
+        orchestrator = None
+
     yield
     # Cleanup
     classifier = None
+    orchestrator = None
 
 app = FastAPI(
-    title="CLIF AI Classification Service",
-    description="Tier-2 ML classifier for real-time security event analysis",
-    version="1.0.0",
+    title="CLIF AI Classification & Agent Service",
+    description="Tier-2 ML classifier + 4-agent investigation pipeline for security analysis",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -190,7 +217,9 @@ async def health():
     return {
         "status": "healthy" if classifier else "degraded",
         "model_loaded": classifier is not None,
-        "service": "clif-ai-classifier",
+        "orchestrator_ready": orchestrator is not None,
+        "agents": len(orchestrator.agents) if orchestrator else 0,
+        "service": "clif-ai-service",
     }
 
 
@@ -268,6 +297,60 @@ async def classify_clif_batch(request: BatchCLIFRequest):
         count=len(results),
         latency_ms=round(latency, 2),
     )
+
+
+# ── Agent Endpoints ─────────────────────────────────────────────────────────
+
+@app.post("/investigate")
+async def investigate(event: EventFeatures):
+    """Run the full 4-agent investigation pipeline."""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not loaded")
+
+    result = await orchestrator.investigate(event.model_dump(), source="api")
+    return result
+
+
+@app.post("/investigate/clif")
+async def investigate_clif(event: CLIFEvent):
+    """Run full investigation on a CLIF pipeline event."""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not loaded")
+
+    features = map_clif_event_to_features(event.model_dump())
+    result = await orchestrator.investigate(features, source="clif")
+    return result
+
+
+@app.post("/investigate/triage")
+async def investigate_triage_only(event: EventFeatures):
+    """Quick triage only — no deep investigation."""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not loaded")
+
+    result = await orchestrator.triage_only(event.model_dump())
+    return result
+
+
+@app.get("/agents/status")
+async def agent_status():
+    """Return the status of all AI agents."""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not loaded")
+    return {
+        "agents": orchestrator.get_agent_statuses(),
+        "total_agents": len(orchestrator.agents),
+    }
+
+
+@app.get("/agents/investigations")
+async def recent_investigations(limit: int = 20):
+    """Return recent investigation summaries."""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not loaded")
+    return {
+        "investigations": orchestrator.get_recent_investigations(limit),
+    }
 
 
 if __name__ == "__main__":
