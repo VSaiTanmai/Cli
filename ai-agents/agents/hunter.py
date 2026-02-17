@@ -5,10 +5,13 @@ Deep-dive investigation — correlates events and traces attack paths.
 
 Responsibilities:
 1. Query ClickHouse for temporally and IP-correlated events
-2. Query LanceDB for semantically similar events
-3. Build attack chain / timeline
-4. Identify affected hosts, IPs, users
-5. Map to MITRE ATT&CK framework
+2. Query raw_logs table for cross-log-type correlation
+3. Query LanceDB for semantically similar events
+4. Build attack chain / timeline
+5. Identify affected hosts, IPs, users
+6. Map to MITRE ATT&CK framework
+
+Supports ALL log types: Network, Sysmon, Windows Security, Auth, Firewall, Generic.
 """
 
 from __future__ import annotations
@@ -31,9 +34,11 @@ from .base import (
 
 logger = logging.getLogger("clif.hunter")
 
-# ── MITRE enrichment lookup for ML categories ───────────────────────────────
+# ── MITRE enrichment lookup ─────────────────────────────────────────────────
+# Covers NSL-KDD ML categories AND rule-based classifier categories.
 
 _MITRE_EXPANSION: Dict[str, List[Dict[str, str]]] = {
+    # NSL-KDD ML categories
     "DoS": [
         {"tactic": "impact", "technique": "T1499", "name": "Endpoint Denial of Service"},
         {"tactic": "impact", "technique": "T1498", "name": "Network Denial of Service"},
@@ -50,7 +55,51 @@ _MITRE_EXPANSION: Dict[str, List[Dict[str, str]]] = {
         {"tactic": "privilege-escalation", "technique": "T1068", "name": "Exploitation for Privilege Escalation"},
         {"tactic": "execution", "technique": "T1059", "name": "Command and Scripting Interpreter"},
     ],
+    # Rule-based classifier categories
+    "Execution": [
+        {"tactic": "execution", "technique": "T1059", "name": "Command and Scripting Interpreter"},
+    ],
+    "Persistence": [
+        {"tactic": "persistence", "technique": "T1547", "name": "Boot or Logon Autostart Execution"},
+    ],
+    "Defense Evasion": [
+        {"tactic": "defense-evasion", "technique": "T1562", "name": "Impair Defenses"},
+    ],
+    "Credential Access": [
+        {"tactic": "credential-access", "technique": "T1003", "name": "OS Credential Dumping"},
+        {"tactic": "credential-access", "technique": "T1110", "name": "Brute Force"},
+    ],
+    "Lateral Movement": [
+        {"tactic": "lateral-movement", "technique": "T1021", "name": "Remote Services"},
+    ],
+    "Command and Control": [
+        {"tactic": "command-and-control", "technique": "T1071", "name": "Application Layer Protocol"},
+    ],
+    "Brute Force": [
+        {"tactic": "credential-access", "technique": "T1110", "name": "Brute Force"},
+    ],
+    "Privilege Escalation": [
+        {"tactic": "privilege-escalation", "technique": "T1548", "name": "Abuse Elevation Control Mechanism"},
+    ],
+    "Account Manipulation": [
+        {"tactic": "persistence", "technique": "T1098", "name": "Account Manipulation"},
+    ],
+    "Audit Tampering": [
+        {"tactic": "defense-evasion", "technique": "T1070", "name": "Indicator Removal"},
+    ],
+    "Suspicious Process": [
+        {"tactic": "execution", "technique": "T1059", "name": "Command and Scripting Interpreter"},
+        {"tactic": "defense-evasion", "technique": "T1036", "name": "Masquerading"},
+    ],
+    "Firewall Evasion": [
+        {"tactic": "command-and-control", "technique": "T1571", "name": "Non-Standard Port"},
+    ],
 }
+
+# Log types that have no reason to query network_events
+_SKIP_NETWORK_QUERY = {"auth", "windows_security", "generic"}
+# Log types that have no reason to query process_events
+_SKIP_PROCESS_QUERY = {"firewall"}
 
 
 class HunterAgent(BaseAgent):
@@ -136,6 +185,53 @@ class HunterAgent(BaseAgent):
             return []
 
     # ── Correlation queries ──────────────────────────────────────────────
+
+    async def _correlate_raw_logs(
+        self, event: Dict[str, Any], client: httpx.AsyncClient,
+        time_from: str, time_to: str,
+    ) -> List[Dict[str, Any]]:
+        """Query raw_logs table for cross-log-type correlation.
+
+        raw_logs schema: event_id, timestamp, level, source, message,
+                         metadata, user_id, ip_address, request_id
+        """
+        ip = event.get("source_ip", event.get("ip_address", ""))
+        user = event.get("user_id", event.get("user", event.get("TargetUserName", "")))
+        hostname = event.get("hostname", event.get("Computer", ""))
+        source = event.get("source", event.get("Source", ""))
+
+        conditions = [f"timestamp BETWEEN '{time_from}' AND '{time_to}'"]
+        or_parts: List[str] = []
+        if ip:
+            or_parts.append(f"ip_address = '{ip}'")
+        if user:
+            or_parts.append(f"user_id = '{user}'")
+        if hostname:
+            or_parts.append(f"message LIKE '%{hostname}%'")
+        if source:
+            or_parts.append(f"source = '{source}'")
+
+        if not or_parts:
+            return []
+
+        where = f"timestamp BETWEEN '{time_from}' AND '{time_to}' AND ({' OR '.join(or_parts)})"
+
+        query = f"""
+            SELECT
+                toString(event_id) AS event_id,
+                toString(timestamp) AS timestamp,
+                level,
+                source,
+                substring(message, 1, 250) AS message,
+                user_id,
+                ip_address
+            FROM raw_logs
+            WHERE {where}
+              AND level IN ('critical', 'error', 'warning', 'alert', 'emergency')
+            ORDER BY timestamp ASC
+            LIMIT {self._max_correlated}
+        """
+        return await self._ch_query(query, client)
 
     async def _correlate_security_events(
         self, event: Dict[str, Any], client: httpx.AsyncClient,
@@ -253,6 +349,7 @@ class HunterAgent(BaseAgent):
         sec_events: List[Dict],
         net_events: List[Dict],
         proc_events: List[Dict],
+        raw_events: List[Dict] | None = None,
     ) -> List[AttackChainStep]:
         """Merge all correlated events into a chronological attack timeline."""
         steps: List[AttackChainStep] = []
@@ -298,6 +395,19 @@ class HunterAgent(BaseAgent):
                 mitre_technique=triage_data.mitre_technique if triage_data else "",
             ))
 
+        # Raw log events (cross-log-type correlation)
+        for ev in (raw_events or []):
+            lvl = ev.get("level", "").upper()
+            src = ev.get("source", "unknown")
+            msg = ev.get("message", "")[:120]
+            steps.append(AttackChainStep(
+                timestamp=ev.get("timestamp", ""),
+                event_id=ev.get("event_id", ""),
+                action=f"[RawLog/{src}] ({lvl}) {msg}",
+                source=ev.get("ip_address", ""),
+                target=ev.get("user_id", ""),
+            ))
+
         # Sort by timestamp
         steps.sort(key=lambda s: s.timestamp)
         return steps
@@ -314,6 +424,7 @@ class HunterAgent(BaseAgent):
 
         event = ctx.trigger_event
         triage = ctx.triage
+        log_type = triage.log_type  # e.g. "network", "sysmon", "auth", etc.
 
         # ── Time window ──────────────────────────────────────────────
         now = datetime.now(timezone.utc)
@@ -329,23 +440,39 @@ class HunterAgent(BaseAgent):
         time_from = (event_time - timedelta(minutes=self._window_min)).strftime("%Y-%m-%d %H:%M:%S")
         time_to = (event_time + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
 
-        # ── Run parallel queries ─────────────────────────────────────
+        # ── Run parallel queries (log-type-aware) ────────────────────
         async with httpx.AsyncClient() as client:
-            # Parallelize ClickHouse + LanceDB queries
-            sec_task = self._correlate_security_events(event, client, time_from, time_to)
-            net_task = self._correlate_network_events(event, client, time_from, time_to)
-            proc_task = self._correlate_process_events(event, client, time_from, time_to)
+            tasks: Dict[str, Any] = {}
+
+            # Always run: security_events + raw_logs + semantic search
+            tasks["sec"] = self._correlate_security_events(event, client, time_from, time_to)
+            tasks["raw"] = self._correlate_raw_logs(event, client, time_from, time_to)
+
+            # Network events — skip for auth/winsec/generic  log types
+            if log_type not in _SKIP_NETWORK_QUERY:
+                tasks["net"] = self._correlate_network_events(event, client, time_from, time_to)
+
+            # Process events — skip for firewall  log type
+            if log_type not in _SKIP_PROCESS_QUERY:
+                tasks["proc"] = self._correlate_process_events(event, client, time_from, time_to)
 
             # Semantic search in LanceDB
             search_text = (
-                f"{triage.category} attack {triage.explanation} "
-                f"from {event.get('source_ip', event.get('ip_address', 'unknown'))}"
+                f"{triage.category} {log_type} {triage.explanation} "
+                f"from {event.get('source_ip', event.get('ip_address', event.get('hostname', 'unknown')))}"
             )
-            sem_task = self._lance_search(search_text, client, limit=self._max_semantic)
+            tasks["sem"] = self._lance_search(search_text, client, limit=self._max_semantic)
 
-            sec_events, net_events, proc_events, sem_results = await asyncio.gather(
-                sec_task, net_task, proc_task, sem_task
-            )
+            # Await all in parallel
+            keys = list(tasks.keys())
+            results = await asyncio.gather(*tasks.values())
+            result_map = dict(zip(keys, results))
+
+        sec_events = result_map.get("sec", [])
+        net_events = result_map.get("net", [])
+        proc_events = result_map.get("proc", [])
+        raw_events = result_map.get("raw", [])
+        sem_results = result_map.get("sem", [])
 
         # ── Build correlated events list ─────────────────────────────
         correlated: List[CorrelatedEvent] = []
@@ -405,6 +532,24 @@ class HunterAgent(BaseAgent):
                 correlation_type="hostname",
             ))
 
+        for ev in raw_events:
+            eid = ev.get("event_id", "")
+            if eid in seen_ids:
+                continue
+            seen_ids.add(eid)
+            correlated.append(CorrelatedEvent(
+                event_id=eid,
+                timestamp=ev.get("timestamp", ""),
+                source_table="raw_logs",
+                category=ev.get("source", "raw"),
+                severity=2 if ev.get("level", "") in ("critical", "emergency") else 1,
+                description=ev.get("message", "")[:200],
+                hostname="",
+                ip_address=ev.get("ip_address", ""),
+                similarity_score=0.65,
+                correlation_type="cross_log",
+            ))
+
         for ev in sem_results:
             eid = ev.get("event_id", "")
             if eid in seen_ids:
@@ -444,6 +589,17 @@ class HunterAgent(BaseAgent):
         # Users from trigger event
         if event.get("user_id"):
             users[event["user_id"]] = True
+        if event.get("user"):
+            users[event["user"]] = True
+        if event.get("TargetUserName"):
+            users[event["TargetUserName"]] = True
+
+        # Users from raw_logs correlation
+        for ev in raw_events:
+            if ev.get("user_id"):
+                users[ev["user_id"]] = True
+            if ev.get("ip_address"):
+                ips[ev["ip_address"]] = True
 
         # ── MITRE tactics/techniques ─────────────────────────────────
         tactics = OrderedDict()
@@ -468,7 +624,7 @@ class HunterAgent(BaseAgent):
             techniques[m["technique"]] = True
 
         # ── Attack chain ─────────────────────────────────────────────
-        attack_chain = self._build_attack_chain(triage, sec_events, net_events, proc_events)
+        attack_chain = self._build_attack_chain(triage, sec_events, net_events, proc_events, raw_events)
 
         # ── Temporal window ──────────────────────────────────────────
         timestamps = [c.timestamp for c in correlated if c.timestamp]
@@ -494,7 +650,7 @@ class HunterAgent(BaseAgent):
             mitre_techniques=list(techniques.keys()),
             temporal_window_sec=round(window_sec, 1),
             semantic_matches=len(sem_results),
-            clickhouse_matches=len(sec_events) + len(net_events) + len(proc_events),
+            clickhouse_matches=len(sec_events) + len(net_events) + len(proc_events) + len(raw_events),
         )
 
         ctx.hunt = hunt

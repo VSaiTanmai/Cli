@@ -191,11 +191,20 @@ const AGENT_META: Record<string, { icon: typeof Bot; color: string; bg: string }
 };
 
 /* ── Sample events ── */
-const SAMPLE_EVENTS = [
+const SAMPLE_EVENTS: Array<{
+  label: string;
+  icon: typeof Bot;
+  color: string;
+  logType: string;
+  mode: "features" | "generic";
+  event: Record<string, unknown>;
+}> = [
   {
     label: "Normal HTTP Traffic",
     icon: CheckCircle2,
     color: "text-emerald-400",
+    logType: "network",
+    mode: "features",
     event: {
       duration: 0, protocol_type: "tcp", service: "http", flag: "SF",
       src_bytes: 215, dst_bytes: 45076, land: 0, wrong_fragment: 0, urgent: 0,
@@ -216,6 +225,8 @@ const SAMPLE_EVENTS = [
     label: "SYN Flood (DoS)",
     icon: AlertTriangle,
     color: "text-red-400",
+    logType: "network",
+    mode: "features",
     event: {
       duration: 0, protocol_type: "tcp", service: "http", flag: "S0",
       src_bytes: 0, dst_bytes: 0, land: 0, wrong_fragment: 0, urgent: 0,
@@ -236,6 +247,8 @@ const SAMPLE_EVENTS = [
     label: "Port Scan (Probe)",
     icon: Activity,
     color: "text-amber-400",
+    logType: "network",
+    mode: "features",
     event: {
       duration: 0, protocol_type: "tcp", service: "http", flag: "REJ",
       src_bytes: 0, dst_bytes: 0, land: 0, wrong_fragment: 0, urgent: 0,
@@ -250,6 +263,79 @@ const SAMPLE_EVENTS = [
       dst_host_same_src_port_rate: 0.0, dst_host_srv_diff_host_rate: 0.0,
       dst_host_serror_rate: 0.0, dst_host_srv_serror_rate: 0.0,
       dst_host_rerror_rate: 1.0, dst_host_srv_rerror_rate: 1.0,
+    },
+  },
+  {
+    label: "Sysmon: Mimikatz (Cred Dump)",
+    icon: AlertTriangle,
+    color: "text-red-400",
+    logType: "sysmon",
+    mode: "generic",
+    event: {
+      Channel: "Microsoft-Windows-Sysmon/Operational",
+      EventID: 10,
+      source: "sysmon",
+      hostname: "DC01.corp.local",
+      timestamp: new Date().toISOString(),
+      SourceProcessGUID: "{12345678-abcd-1234-abcd-123456789abc}",
+      SourceImage: "C:\\Tools\\mimikatz.exe",
+      TargetImage: "C:\\Windows\\System32\\lsass.exe",
+      GrantedAccess: "0x1010",
+      SourceUser: "CORP\\attacker",
+    },
+  },
+  {
+    label: "WinSec: Failed Logon Burst",
+    icon: AlertTriangle,
+    color: "text-orange-400",
+    logType: "windows_security",
+    mode: "generic",
+    event: {
+      Channel: "Security",
+      EventID: 4625,
+      source: "Microsoft-Windows-Security-Auditing",
+      hostname: "WEB-SRV01",
+      timestamp: new Date().toISOString(),
+      TargetUserName: "admin",
+      LogonType: "10",
+      IpAddress: "185.220.101.42",
+      FailureReason: "%%2313",
+      SubStatus: "0xc000006a",
+    },
+  },
+  {
+    label: "SSH Brute Force (Auth)",
+    icon: AlertTriangle,
+    color: "text-orange-400",
+    logType: "auth",
+    mode: "generic",
+    event: {
+      source: "sshd",
+      hostname: "prod-bastion-01",
+      timestamp: new Date().toISOString(),
+      message: "Failed password for invalid user admin from 45.33.32.156 port 22 ssh2",
+      ip_address: "45.33.32.156",
+      user: "admin",
+      failed_logins: 5,
+    },
+  },
+  {
+    label: "Firewall: Outbound C2 Port",
+    icon: AlertTriangle,
+    color: "text-red-400",
+    logType: "firewall",
+    mode: "generic",
+    event: {
+      source: "iptables",
+      hostname: "edge-fw-01",
+      timestamp: new Date().toISOString(),
+      message: "iptables: IN= OUT=eth0 SRC=10.0.1.42 DST=198.51.100.99 PROTO=TCP SPT=54321 DPT=4444 LEN=52",
+      action: "allow",
+      direction: "outbound",
+      src_ip: "10.0.1.42",
+      dst_ip: "198.51.100.99",
+      dst_port: 4444,
+      protocol: "TCP",
     },
   },
 ];
@@ -414,7 +500,7 @@ export default function AIAgentsPage() {
       const res = await fetch("/api/ai/investigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: SAMPLE_EVENTS[idx].event }),
+        body: JSON.stringify({ event: SAMPLE_EVENTS[idx].event, mode: SAMPLE_EVENTS[idx].mode }),
       });
       clearInterval(timer);
 
@@ -803,8 +889,14 @@ export default function AIAgentsPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium">{sample.label}</p>
                           <p className="text-[10px] text-muted-foreground truncate">
-                            {sample.event.protocol_type.toUpperCase()} ·{" "}
-                            {sample.event.service} · flag={sample.event.flag}
+                            {sample.logType.toUpperCase()}
+                            {sample.event.protocol_type
+                              ? ` · ${String(sample.event.protocol_type).toUpperCase()} · ${sample.event.service} · flag=${sample.event.flag}`
+                              : sample.event.EventID
+                                ? ` · EID ${sample.event.EventID} · ${sample.event.hostname ?? ""}`
+                                : sample.event.source
+                                  ? ` · ${sample.event.source} · ${sample.event.hostname ?? ""}`
+                                  : ""}
                           </p>
                         </div>
                         {investigating && selectedInvestigate === idx ? (
@@ -1814,15 +1906,16 @@ export default function AIAgentsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {SAMPLE_EVENTS.map((sample, idx) => {
+                {SAMPLE_EVENTS.filter((s) => s.logType === "network").map((sample, idx) => {
                   const Icon = sample.icon;
+                  const realIdx = SAMPLE_EVENTS.indexOf(sample);
                   return (
                     <button
-                      key={idx}
+                      key={realIdx}
                       disabled={classifying || !isOnline}
-                      onClick={() => runClassify(idx)}
+                      onClick={() => runClassify(realIdx)}
                       className={`w-full flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-accent/50 disabled:opacity-50 disabled:cursor-not-allowed ${
-                        selectedSample === idx ? "border-primary bg-accent/30" : ""
+                        selectedSample === realIdx ? "border-primary bg-accent/30" : ""
                       }`}
                     >
                       <div className="rounded-md bg-muted p-2">
@@ -1831,12 +1924,12 @@ export default function AIAgentsPage() {
                       <div className="flex-1">
                         <p className="text-sm font-medium">{sample.label}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {sample.event.protocol_type.toUpperCase()} ·{" "}
-                          {sample.event.service} · flag={sample.event.flag} · src_bytes=
-                          {sample.event.src_bytes}
+                          {String(sample.event.protocol_type ?? "").toUpperCase()} ·{" "}
+                          {String(sample.event.service ?? "")} · flag={String(sample.event.flag ?? "")} · src_bytes=
+                          {String(sample.event.src_bytes ?? 0)}
                         </p>
                       </div>
-                      {classifying && selectedSample === idx ? (
+                      {classifying && selectedSample === realIdx ? (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       ) : (
                         <Zap className="h-4 w-4 text-muted-foreground" />

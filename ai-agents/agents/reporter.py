@@ -43,6 +43,7 @@ MITRE_TACTIC_DESC = {
 }
 
 MITRE_TECHNIQUE_DB = {
+    # NSL-KDD ML categories
     "T1499": {"name": "Endpoint Denial of Service", "url": "https://attack.mitre.org/techniques/T1499/"},
     "T1498": {"name": "Network Denial of Service", "url": "https://attack.mitre.org/techniques/T1498/"},
     "T1046": {"name": "Network Service Discovery", "url": "https://attack.mitre.org/techniques/T1046/"},
@@ -57,11 +58,41 @@ MITRE_TECHNIQUE_DB = {
     "T1021": {"name": "Remote Services", "url": "https://attack.mitre.org/techniques/T1021/"},
     "T1071.004": {"name": "Application Layer Protocol: DNS", "url": "https://attack.mitre.org/techniques/T1071/004/"},
     "T1562": {"name": "Impair Defenses", "url": "https://attack.mitre.org/techniques/T1562/"},
+    # Sysmon/Windows Security classifier techniques
+    "T1059.001": {"name": "PowerShell", "url": "https://attack.mitre.org/techniques/T1059/001/"},
+    "T1218": {"name": "System Binary Proxy Execution", "url": "https://attack.mitre.org/techniques/T1218/"},
+    "T1055": {"name": "Process Injection", "url": "https://attack.mitre.org/techniques/T1055/"},
+    "T1003": {"name": "OS Credential Dumping", "url": "https://attack.mitre.org/techniques/T1003/"},
+    "T1003.001": {"name": "LSASS Memory", "url": "https://attack.mitre.org/techniques/T1003/001/"},
+    "T1547": {"name": "Boot or Logon Autostart Execution", "url": "https://attack.mitre.org/techniques/T1547/"},
+    "T1547.001": {"name": "Registry Run Keys / Startup Folder", "url": "https://attack.mitre.org/techniques/T1547/001/"},
+    "T1562.001": {"name": "Disable or Modify Tools", "url": "https://attack.mitre.org/techniques/T1562/001/"},
+    "T1071": {"name": "Application Layer Protocol", "url": "https://attack.mitre.org/techniques/T1071/"},
+    "T1136": {"name": "Create Account", "url": "https://attack.mitre.org/techniques/T1136/"},
+    "T1136.001": {"name": "Local Account", "url": "https://attack.mitre.org/techniques/T1136/001/"},
+    "T1110.001": {"name": "Password Guessing", "url": "https://attack.mitre.org/techniques/T1110/001/"},
+    "T1070": {"name": "Indicator Removal", "url": "https://attack.mitre.org/techniques/T1070/"},
+    "T1070.001": {"name": "Clear Windows Event Logs", "url": "https://attack.mitre.org/techniques/T1070/001/"},
+    "T1134": {"name": "Access Token Manipulation", "url": "https://attack.mitre.org/techniques/T1134/"},
+    "T1543.003": {"name": "Windows Service", "url": "https://attack.mitre.org/techniques/T1543/003/"},
+    "T1546.003": {"name": "WMI Event Subscription", "url": "https://attack.mitre.org/techniques/T1546/003/"},
+    "T1564.004": {"name": "NTFS File Attributes", "url": "https://attack.mitre.org/techniques/T1564/004/"},
+    "T1505.003": {"name": "Web Shell", "url": "https://attack.mitre.org/techniques/T1505/003/"},
+    "T1053.005": {"name": "Scheduled Task", "url": "https://attack.mitre.org/techniques/T1053/005/"},
+    "T1571": {"name": "Non-Standard Port", "url": "https://attack.mitre.org/techniques/T1571/"},
+    "T1098": {"name": "Account Manipulation", "url": "https://attack.mitre.org/techniques/T1098/"},
+    "T1036": {"name": "Masquerading", "url": "https://attack.mitre.org/techniques/T1036/"},
+    # Auth classifier
+    "T1021.004": {"name": "SSH", "url": "https://attack.mitre.org/techniques/T1021/004/"},
+    # Generic
+    "T1190": {"name": "Exploit Public-Facing Application", "url": "https://attack.mitre.org/techniques/T1190/"},
+    "T1105": {"name": "Ingress Tool Transfer", "url": "https://attack.mitre.org/techniques/T1105/"},
 }
 
 # ── Recommendation templates ─────────────────────────────────────────────────
 
 CATEGORY_RECOMMENDATIONS = {
+    # NSL-KDD ML categories
     "DoS": [
         "Enable rate-limiting on affected services to mitigate ongoing flood",
         "Deploy upstream DDoS mitigation (WAF/CDN scrubbing)",
@@ -90,6 +121,98 @@ CATEGORY_RECOMMENDATIONS = {
         "Run full malware scan on affected systems",
         "Review sudo/admin logs for unauthorized escalation",
         "Patch any exploited vulnerabilities",
+    ],
+    # Sysmon / process-based categories
+    "Execution": [
+        "Investigate the process tree for the suspicious execution",
+        "Check if the parent process is legitimate and expected",
+        "Review command-line arguments for encoded/obfuscated payloads",
+        "Block the hash of the suspicious binary across endpoints",
+        "Collect memory dump of the suspicious process for forensics",
+    ],
+    "Persistence": [
+        "Remove unauthorized registry Run keys or startup entries",
+        "Review scheduled tasks and WMI subscriptions",
+        "Audit service installations for unauthorized entries",
+        "Check for web shells in publicly accessible directories",
+        "Review autostart locations across all user profiles",
+    ],
+    "Defense Evasion": [
+        "Verify integrity of security tools and logging infrastructure",
+        "Check for disabled antivirus or EDR agents",
+        "Review audit policy changes for unauthorized modifications",
+        "Scan for unsigned drivers or tampered system files",
+        "Validate that security event logs are not being cleared",
+    ],
+    "Credential Access": [
+        "Reset passwords for all potentially compromised accounts",
+        "Enable MFA on all privileged accounts immediately",
+        "Review LSASS access patterns for credential dumping",
+        "Check for Mimikatz artifacts and known credential tools",
+        "Rotate service account credentials and API keys",
+    ],
+    "Lateral Movement": [
+        "Isolate affected hosts to prevent further lateral spread",
+        "Review remote logon events across the domain",
+        "Check for PsExec, WMI, and WinRM usage patterns",
+        "Validate network segmentation controls",
+        "Audit admin share access (C$, ADMIN$) across hosts",
+    ],
+    "Brute Force": [
+        "Enable account lockout policies if not configured",
+        "Block source IPs at the authentication gateway",
+        "Reset credentials for any successfully compromised accounts",
+        "Implement fail2ban or equivalent rate-limiting",
+        "Review logs for any successful logon after the brute-force attempts",
+    ],
+    "Privilege Escalation": [
+        "Audit sudo configuration and sudoers file",
+        "Review recent privilege escalation events",
+        "Check for unauthorized SUID/SGID binaries (Linux)",
+        "Verify UAC settings and token integrity (Windows)",
+        "Patch known local privilege escalation vulnerabilities",
+    ],
+    "Command and Control": [
+        "Block identified C2 IP addresses and domains at the firewall",
+        "Review DNS logs for DGA or tunnelling patterns",
+        "Isolate affected endpoints from the network",
+        "Capture network traffic for C2 protocol analysis",
+        "Check for beaconing behaviour in proxy/firewall logs",
+    ],
+    "Account Manipulation": [
+        "Review recently created or modified user accounts",
+        "Audit group membership changes, especially admin groups",
+        "Verify that account changes were authorized via change management",
+        "Check for shadow admin accounts or hidden privileges",
+        "Enable alerting on all account creation/modification events",
+    ],
+    "Audit Tampering": [
+        "Investigate who cleared the security event logs",
+        "Restore audit logs from backup or SIEM",
+        "Review audit policy changes for unauthorized modifications",
+        "Enable tamper protection on logging infrastructure",
+        "Escalate immediately — log clearing often indicates active compromise",
+    ],
+    "Suspicious Process": [
+        "Investigate the full process execution chain",
+        "Review the binary reputation and signing status",
+        "Check for living-off-the-land binary (LOLBIN) abuse",
+        "Collect the binary for sandbox analysis",
+        "Review similar executions across the fleet for scope",
+    ],
+    "Firewall Evasion": [
+        "Review and tighten outbound firewall rules",
+        "Block identified non-standard port communications",
+        "Monitor for additional C2 traffic on unusual ports",
+        "Review endpoint for malware communicating on detected ports",
+        "Correlate with threat intel for known malware port usage",
+    ],
+    "Suspicious Auth": [
+        "Review authentication source and verify legitimacy",
+        "Check for credential stuffing indicators",
+        "Review geographic/IP patterns for anomalous logons",
+        "Enforce step-up authentication for suspicious sessions",
+        "Monitor the account for further suspicious activity",
     ],
 }
 
@@ -143,8 +266,9 @@ class ReporterAgent(BaseAgent):
 
         parts = [
             f"Investigation {ctx.investigation_id}: ",
-            f"A {triage.severity.upper()} severity {triage.category} attack was detected "
-            f"with {triage.confidence:.1%} ML confidence. ",
+            f"A {triage.severity.upper()} severity {triage.category} alert was detected "
+            f"on a {triage.log_type} event with {triage.confidence:.1%} confidence "
+            f"(classifier: {triage.classifier_used}). ",
         ]
 
         if verification:
@@ -182,8 +306,10 @@ class ReporterAgent(BaseAgent):
 
         lines = [
             f"Classification: {'ATTACK' if triage.is_attack else 'BENIGN'}",
+            f"Log Type: {triage.log_type}",
+            f"Classifier: {triage.classifier_used}",
             f"Category: {triage.category} ({triage.clif_category})",
-            f"Binary confidence: {triage.confidence:.1%}",
+            f"Confidence: {triage.confidence:.1%}",
             f"Category confidence: {triage.category_confidence:.1%}",
             f"Severity: {triage.severity.upper()}",
             f"Priority: {triage.priority}",
@@ -192,6 +318,12 @@ class ReporterAgent(BaseAgent):
             "",
             f"Explanation: {triage.explanation}",
         ]
+
+        if triage.matched_rules:
+            lines.append("")
+            lines.append(f"Matched Rules ({len(triage.matched_rules)}):")
+            for rule in triage.matched_rules:
+                lines.append(f"  • {rule}")
 
         if triage.multi_probs:
             lines.append("")

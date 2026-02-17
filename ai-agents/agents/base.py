@@ -77,6 +77,9 @@ class TriageData:
     multi_probs: Dict[str, float] = field(default_factory=dict)
     mitre_tactic: str = ""
     mitre_technique: str = ""
+    log_type: str = "network"          # network, sysmon, windows_security, auth, firewall, generic
+    classifier_used: str = "ml"        # ml, sysmon_rules, winsec_rules, auth_rules, fw_rules, heuristic
+    matched_rules: List[str] = field(default_factory=list)  # rule names that triggered (non-ML)
 
 
 @dataclass

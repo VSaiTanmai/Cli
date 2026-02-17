@@ -28,13 +28,15 @@ from .base import (
 logger = logging.getLogger("clif.verifier")
 
 # ── False-positive signatures ────────────────────────────────────────────────
-# Known patterns that frequently cause false positives in network IDS.
+# Known patterns that frequently cause false positives across ALL log types.
 # Each pattern has conditions that, if ALL met, increase the FP score.
 
 FP_PATTERNS: List[Dict[str, Any]] = [
+    # ─── Network (NSL-KDD) FP Patterns ───────────────────────────────────
     {
         "name": "Health-check traffic",
         "description": "Internal load balancer health checks misclassified as probes",
+        "log_types": ["network"],
         "conditions": {
             "category": "Probe",
             "same_srv_rate_gte": 0.95,
@@ -46,6 +48,7 @@ FP_PATTERNS: List[Dict[str, Any]] = [
     {
         "name": "HTTP keep-alive burst",
         "description": "High connection count from keep-alive pipelining",
+        "log_types": ["network"],
         "conditions": {
             "category": "DoS",
             "service": "http",
@@ -57,6 +60,7 @@ FP_PATTERNS: List[Dict[str, Any]] = [
     {
         "name": "Batch SSH deployment",
         "description": "Automated SSH deployments (Ansible, SaltStack) cause R2L alerts",
+        "log_types": ["network"],
         "conditions": {
             "category": "R2L",
             "service": "ssh",
@@ -66,23 +70,129 @@ FP_PATTERNS: List[Dict[str, Any]] = [
         "fp_score": 0.65,
     },
     {
-        "name": "Low-confidence single event",
-        "description": "Single low-confidence alert with no corroborating events",
-        "conditions": {
-            "confidence_lte": 0.65,
-            "correlated_events_lte": 1,
-        },
-        "fp_score": 0.5,
-    },
-    {
         "name": "DNS monitoring tool",
         "description": "DNS health/performance probes from monitoring systems",
+        "log_types": ["network"],
         "conditions": {
             "category": "Probe",
             "service": "domain_u",
             "serror_rate_lte": 0.1,
         },
         "fp_score": 0.55,
+    },
+
+    # ─── Sysmon FP Patterns ──────────────────────────────────────────────
+    {
+        "name": "Trusted PowerShell script",
+        "description": "PowerShell from known admin tools directory",
+        "log_types": ["sysmon"],
+        "conditions": {
+            "category_in": ["Execution", "Suspicious Process"],
+            "image_contains": "\\\\Windows\\\\System32\\\\WindowsPowerShell",
+            "confidence_lte": 0.75,
+        },
+        "fp_score": 0.5,
+    },
+    {
+        "name": "SCCM/Intune agent activity",
+        "description": "Management agents triggering Sysmon process rules",
+        "log_types": ["sysmon"],
+        "conditions": {
+            "category_in": ["Execution", "Persistence"],
+            "image_contains_any": ["ccmexec", "intune", "sccm", "omsagent"],
+        },
+        "fp_score": 0.6,
+    },
+    {
+        "name": "Windows Update service",
+        "description": "Windows Update / WMI provider host activity",
+        "log_types": ["sysmon"],
+        "conditions": {
+            "image_contains_any": ["svchost.exe", "wmiprvse.exe", "trustedinstaller.exe"],
+            "confidence_lte": 0.7,
+        },
+        "fp_score": 0.55,
+    },
+
+    # ─── Windows Security FP Patterns ────────────────────────────────────
+    {
+        "name": "Service account logon",
+        "description": "Routine type-3 logon from internal subnet service accounts",
+        "log_types": ["windows_security"],
+        "conditions": {
+            "event_id_in": [4624],
+            "logon_type": "3",
+            "user_starts_with": "svc_",
+        },
+        "fp_score": 0.6,
+    },
+    {
+        "name": "Scheduled task audit noise",
+        "description": "Routine scheduled task creation from Task Scheduler service",
+        "log_types": ["windows_security"],
+        "conditions": {
+            "event_id_in": [4698],
+            "user_is_system": True,
+        },
+        "fp_score": 0.55,
+    },
+    {
+        "name": "Admin console logon",
+        "description": "Admin logon from known jump-server IPs (typ. 4672 noise)",
+        "log_types": ["windows_security"],
+        "conditions": {
+            "event_id_in": [4672],
+            "confidence_lte": 0.70,
+            "correlated_events_lte": 2,
+        },
+        "fp_score": 0.5,
+    },
+
+    # ─── Auth Log FP Patterns ────────────────────────────────────────────
+    {
+        "name": "Automated SSH scanner",
+        "description": "Known scanner IPs that fail but never succeed",
+        "log_types": ["auth"],
+        "conditions": {
+            "category_in": ["Brute Force", "Credential Access"],
+            "confidence_lte": 0.70,
+            "correlated_events_lte": 1,
+        },
+        "fp_score": 0.5,
+    },
+    {
+        "name": "Cron/Ansible sudo",
+        "description": "Automated cron or Ansible sudo invocations",
+        "log_types": ["auth"],
+        "conditions": {
+            "category_in": ["Privilege Escalation"],
+            "message_contains_any": ["cron", "ansible", "puppet", "chef"],
+        },
+        "fp_score": 0.65,
+    },
+
+    # ─── Firewall FP Patterns ────────────────────────────────────────────
+    {
+        "name": "Broadcast/multicast drops",
+        "description": "Routine dropped broadcast/multicast traffic",
+        "log_types": ["firewall"],
+        "conditions": {
+            "dst_ip_broadcast": True,
+            "confidence_lte": 0.70,
+        },
+        "fp_score": 0.6,
+    },
+
+    # ─── Cross-type: Low confidence singleton ────────────────────────────
+    {
+        "name": "Low-confidence single event",
+        "description": "Single low-confidence alert with no corroborating events",
+        "log_types": ["network", "sysmon", "windows_security", "auth", "firewall", "generic"],
+        "conditions": {
+            "confidence_lte": 0.65,
+            "correlated_events_lte": 1,
+        },
+        "fp_score": 0.5,
     },
 ]
 
@@ -91,22 +201,52 @@ def _check_condition(key: str, expected: Any, event: Dict, triage, hunt) -> bool
     """Evaluate a single FP pattern condition."""
     if key == "category":
         return triage.category == expected
+    if key == "category_in":
+        return triage.category in expected
     if key == "service":
         return event.get("service", "") == expected
     if key == "logged_in":
         return bool(event.get("logged_in", 0)) == expected
+    if key == "image_contains":
+        image = str(event.get("Image", event.get("image", ""))).lower()
+        return expected.lower() in image
+    if key == "image_contains_any":
+        image = str(event.get("Image", event.get("image", ""))).lower()
+        return any(s.lower() in image for s in expected)
+    if key == "event_id_in":
+        eid = event.get("EventID", event.get("event_id_win", None))
+        if eid is not None:
+            try:
+                return int(eid) in expected
+            except (ValueError, TypeError):
+                pass
+        return False
+    if key == "logon_type":
+        return str(event.get("LogonType", event.get("logon_type", ""))) == expected
+    if key == "user_starts_with":
+        user = str(event.get("TargetUserName", event.get("user", ""))).lower()
+        return user.startswith(expected.lower())
+    if key == "user_is_system":
+        user = str(event.get("TargetUserName", event.get("user", ""))).lower()
+        return user in ("system", "local service", "network service") and expected
+    if key == "message_contains_any":
+        msg = str(event.get("message", "")).lower()
+        return any(s.lower() in msg for s in expected)
+    if key == "dst_ip_broadcast":
+        dst = event.get("dst_ip", event.get("DPT", ""))
+        return str(dst).endswith(".255") or dst == "255.255.255.255"
     if key.endswith("_gte"):
-        field = key[:-4]
-        return float(event.get(field, 0)) >= expected
+        f = key[:-4]
+        return float(event.get(f, 0)) >= expected
     if key.endswith("_lte"):
-        field = key[:-4]
-        if field == "confidence":
+        f = key[:-4]
+        if f == "confidence":
             return triage.confidence <= expected
-        if field == "correlated_events":
+        if f == "correlated_events":
             return len(hunt.correlated_events) <= expected if hunt else True
-        if field == "num_failed_logins":
+        if f == "num_failed_logins":
             return int(event.get("num_failed_logins", 0)) <= expected
-        return float(event.get(field, 0)) <= expected
+        return float(event.get(f, 0)) <= expected
     return False
 
 
@@ -183,13 +323,15 @@ class VerifierAgent(BaseAgent):
     # ── Verification checks ──────────────────────────────────────────────
 
     def _check_confidence_threshold(self, triage) -> tuple[bool, str]:
-        """Check 1: ML confidence above operational threshold."""
-        if triage.confidence >= 0.80:
-            return True, f"ML confidence {triage.confidence:.2f} ≥ 0.80 threshold"
-        elif triage.confidence >= 0.60:
-            return True, f"ML confidence {triage.confidence:.2f} — moderate (0.60-0.80), needs corroboration"
+        """Check 1: Classifier confidence above operational threshold."""
+        classifier = getattr(triage, "classifier_used", "ml")
+        conf = triage.confidence
+        if conf >= 0.80:
+            return True, f"{classifier} confidence {conf:.2f} ≥ 0.80 threshold"
+        elif conf >= 0.60:
+            return True, f"{classifier} confidence {conf:.2f} — moderate (0.60-0.80), needs corroboration"
         else:
-            return False, f"ML confidence {triage.confidence:.2f} < 0.60 — below operational threshold"
+            return False, f"{classifier} confidence {conf:.2f} < 0.60 — below operational threshold"
 
     def _check_false_positive_patterns(
         self, event: Dict, triage, hunt
@@ -197,8 +339,14 @@ class VerifierAgent(BaseAgent):
         """Check 2: Match against known FP patterns. Returns (fp_score, matched_patterns)."""
         total_fp_score = 0.0
         matched = []
+        log_type = getattr(triage, "log_type", "network")
 
         for pattern in FP_PATTERNS:
+            # Only evaluate patterns relevant to this log type
+            applicable_types = pattern.get("log_types")
+            if applicable_types and log_type not in applicable_types:
+                continue
+
             conditions = pattern["conditions"]
             all_match = all(
                 _check_condition(k, v, event, triage, hunt)
@@ -389,8 +537,9 @@ class VerifierAgent(BaseAgent):
         )
 
         # ── Evidence summary ─────────────────────────────────────────
+        classifier_label = getattr(triage, "classifier_used", "ml")
         evidence_parts = [
-            f"ML classifier: {triage.category} ({triage.confidence:.1%})",
+            f"Classifier ({classifier_label}): {triage.category} ({triage.confidence:.1%})",
         ]
         if hunt and hunt.correlated_events:
             evidence_parts.append(

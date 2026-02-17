@@ -147,6 +147,25 @@ class BatchClassifyRequest(BaseModel):
 class BatchCLIFRequest(BaseModel):
     events: List[CLIFEvent]
 
+class GenericEvent(BaseModel):
+    """
+    Accepts ANY log event (Sysmon, Windows Security, auth, firewall, generic).
+    All fields are optional — the Triage Agent auto-detects the log type.
+    """
+    model_config = {"extra": "allow"}
+
+    # Common optional fields for auto-detection
+    EventID: Optional[int] = None
+    Channel: Optional[str] = None
+    source: Optional[str] = None
+    message: Optional[str] = None
+    timestamp: Optional[str] = None
+    hostname: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_id: Optional[str] = None
+    level: Optional[str] = None
+    log_type: Optional[str] = None  # explicit hint: sysmon, auth, firewall, etc.
+
 class BatchClassifyResponse(BaseModel):
     results: List[ClassifyResponse]
     count: int
@@ -303,7 +322,7 @@ async def classify_clif_batch(request: BatchCLIFRequest):
 
 @app.post("/investigate")
 async def investigate(event: EventFeatures):
-    """Run the full 4-agent investigation pipeline."""
+    """Run the full 4-agent investigation pipeline (NSL-KDD features)."""
     if not orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not loaded")
 
@@ -319,6 +338,27 @@ async def investigate_clif(event: CLIFEvent):
 
     features = map_clif_event_to_features(event.model_dump())
     result = await orchestrator.investigate(features, source="clif")
+    return result
+
+
+@app.post("/investigate/generic")
+async def investigate_generic(event: GenericEvent):
+    """Run full investigation on ANY log type (auto-detects log type).
+
+    Accepts Sysmon, Windows Security, auth (SSH/sudo/PAM),
+    firewall, and generic/unknown log events.  The Triage Agent
+    internally routes to the correct rule-based classifier.
+    """
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not loaded")
+
+    # Pass through all fields including extras
+    event_dict = event.model_dump()
+    # Also include any extra fields (pydantic v2 extra="allow")
+    if hasattr(event, "model_extra") and event.model_extra:
+        event_dict.update(event.model_extra)
+
+    result = await orchestrator.investigate(event_dict, source="generic")
     return result
 
 
