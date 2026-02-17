@@ -31,6 +31,60 @@ const CH_RETRY_BASE_MS = 200;
 /** Maximum rows to accept in a single response (safety limit) */
 const CH_MAX_RESULT_ROWS = Number(process.env.CH_MAX_RESULT_ROWS) || 100_000;
 
+// ─── Circuit Breaker ────────────────────────────────────────────────────────────
+// After a network failure, skip all queries for a cooldown period to prevent
+// log floods and wasted resources when ClickHouse is entirely unreachable.
+
+/** Cooldown period in ms after circuit opens (default 30s) */
+const CH_CIRCUIT_COOLDOWN_MS = Number(process.env.CH_CIRCUIT_COOLDOWN_MS) || 30_000;
+/** Number of consecutive failures to trip the circuit */
+const CH_CIRCUIT_THRESHOLD = Number(process.env.CH_CIRCUIT_THRESHOLD) || 2;
+
+let circuitFailures = 0;
+let circuitOpenUntil = 0;
+let circuitLoggedAt = 0;
+
+function circuitIsOpen(): boolean {
+  if (circuitOpenUntil === 0) return false;
+  if (Date.now() >= circuitOpenUntil) {
+    // Half-open: allow one probe to see if ClickHouse is back
+    circuitOpenUntil = 0;
+    circuitFailures = 0;
+    log.info("ClickHouse circuit breaker half-open, probing", {
+      component: "clickhouse",
+    });
+    return false;
+  }
+  return true;
+}
+
+function circuitRecordFailure(): void {
+  circuitFailures++;
+  if (circuitFailures >= CH_CIRCUIT_THRESHOLD) {
+    circuitOpenUntil = Date.now() + CH_CIRCUIT_COOLDOWN_MS;
+    // Log the circuit trip at most once per cooldown
+    const now = Date.now();
+    if (now - circuitLoggedAt > CH_CIRCUIT_COOLDOWN_MS) {
+      circuitLoggedAt = now;
+      log.warn("ClickHouse circuit breaker OPEN — suppressing queries", {
+        component: "clickhouse",
+        cooldownMs: CH_CIRCUIT_COOLDOWN_MS,
+        consecutiveFailures: circuitFailures,
+      });
+    }
+  }
+}
+
+function circuitRecordSuccess(): void {
+  if (circuitFailures > 0) {
+    log.info("ClickHouse circuit breaker reset — connection restored", {
+      component: "clickhouse",
+    });
+  }
+  circuitFailures = 0;
+  circuitOpenUntil = 0;
+}
+
 // ─── Startup validation ─────────────────────────────────────────────────────────
 
 if (!process.env.CH_PASSWORD && process.env.NODE_ENV === "production") {
@@ -75,6 +129,11 @@ export async function queryClickHouse<T = Record<string, unknown>>(
   sql: string,
   params?: Record<string, string | number>,
 ): Promise<CHResult<T>> {
+  // Circuit breaker: fast-fail when ClickHouse is known to be down
+  if (circuitIsOpen()) {
+    throw new Error("ClickHouse circuit breaker is open — service unavailable");
+  }
+
   const url = new URL(`http://${CH_HOST}:${CH_PORT}/`);
   url.searchParams.set("database", CH_DB);
   url.searchParams.set("default_format", "JSON");
@@ -111,6 +170,10 @@ export async function queryClickHouse<T = Record<string, unknown>>(
       if (!res.ok) {
         const text = await res.text();
         if (attempt < CH_MAX_RETRIES && isRetriable(res.status, text)) {
+          circuitRecordFailure();
+          if (circuitIsOpen()) {
+            throw new Error("ClickHouse circuit breaker is open — service unavailable");
+          }
           const delay = backoffMs(attempt);
           lastError = new Error(`ClickHouse HTTP ${res.status}`);
           log.warn("ClickHouse transient error, retrying", {
@@ -154,6 +217,7 @@ export async function queryClickHouse<T = Record<string, unknown>>(
         });
       }
 
+      circuitRecordSuccess();
       return result;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -165,6 +229,11 @@ export async function queryClickHouse<T = Record<string, unknown>>(
         throw new Error(`ClickHouse query timed out after ${CH_QUERY_TIMEOUT_MS}ms`);
       }
       if (attempt < CH_MAX_RETRIES && err instanceof TypeError) {
+        circuitRecordFailure();
+        // If circuit just opened, bail out immediately instead of retrying
+        if (circuitIsOpen()) {
+          throw new Error("ClickHouse circuit breaker is open — service unavailable");
+        }
         const delay = backoffMs(attempt);
         lastError = err;
         log.warn("ClickHouse network error, retrying", {
@@ -182,6 +251,7 @@ export async function queryClickHouse<T = Record<string, unknown>>(
     }
   }
 
+  circuitRecordFailure();
   log.error("ClickHouse query failed after max retries", {
     component: "clickhouse",
     retries: CH_MAX_RETRIES,

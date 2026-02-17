@@ -9,7 +9,7 @@ ENGINE = ReplicatedAggregatingMergeTree(
     '{replica}'
 )
 ORDER BY (ts, source)
-TTL ts + INTERVAL 1 HOUR DELETE
+TTL ts + INTERVAL 1 DAY DELETE
 SETTINGS index_granularity = 256;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS clif_logs.events_per_10s_raw_mv ON CLUSTER 'clif_cluster'

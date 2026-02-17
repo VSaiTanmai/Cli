@@ -52,8 +52,15 @@ def configure_llm(
     """
     Configure DSPy with Ollama backend.
     Returns True if configuration succeeded.
+    Set env DISABLE_LLM=1 to skip LLM entirely.
     """
     global _llm_configured, _llm_available
+
+    if os.getenv("DISABLE_LLM", "").strip() in ("1", "true", "yes"):
+        logger.info("LLM explicitly disabled via DISABLE_LLM env var")
+        _llm_configured = False
+        _llm_available = False
+        return False
 
     _model = model or OLLAMA_MODEL
     _base_url = base_url or OLLAMA_BASE_URL

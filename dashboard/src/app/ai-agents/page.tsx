@@ -340,7 +340,7 @@ const SAMPLE_EVENTS: Array<{
   },
 ];
 
-const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
+const pct = (v: number | undefined | null) => `${((v ?? 0) * 100).toFixed(2)}%`;
 
 /* ── Helpers ── */
 function severityVariant(sev: string): "critical" | "high" | "medium" | "low" | "info" {
@@ -437,7 +437,11 @@ export default function AIAgentsPage() {
       const res = await fetch("/api/ai/agents");
       const data = await res.json();
       if (!data.error) {
-        setAgents(data.agents ?? []);
+        // Filter out non-agent entries (e.g. DSPy/Ollama LLM status object)
+        const realAgents = (data.agents ?? []).filter(
+          (a: any) => typeof a.cases_processed === "number",
+        );
+        setAgents(realAgents);
         setInvestigations(data.investigations ?? []);
       }
     } catch {
@@ -688,7 +692,7 @@ export default function AIAgentsPage() {
                           </div>
                           <div>
                             <p className="text-lg font-bold tabular-nums">
-                              {agent.avg_response_ms.toFixed(0)}
+                              {(agent.avg_response_ms ?? 0).toFixed(0)}
                               <span className="text-[10px] text-muted-foreground font-normal">
                                 ms
                               </span>
@@ -831,15 +835,15 @@ export default function AIAgentsPage() {
                               </td>
                               <td className="py-2 pr-3 text-right tabular-nums">
                                 {(
-                                  (inv.adjusted_confidence ?? inv.confidence) * 100
+                                  (inv.adjusted_confidence ?? inv.confidence ?? 0) * 100
                                 ).toFixed(1)}
                                 %
                               </td>
                               <td className="py-2 pr-3 text-right tabular-nums">
-                                {inv.correlated_events}
+                                {inv.correlated_events ?? 0}
                               </td>
                               <td className="py-2 text-right tabular-nums text-muted-foreground">
-                                {inv.total_duration_ms.toFixed(0)}ms
+                                {(inv.total_duration_ms ?? 0).toFixed(0)}ms
                               </td>
                             </tr>
                           ))}
@@ -1062,7 +1066,7 @@ export default function AIAgentsPage() {
                           </p>
                           <p className="text-xs font-bold tabular-nums mt-0.5">
                             {investigateResult.agent_results
-                              .reduce((s, a) => s + a.duration_ms, 0)
+                              .reduce((s, a) => s + (a.duration_ms ?? 0), 0)
                               .toFixed(0)}
                             ms
                           </p>
@@ -1341,7 +1345,7 @@ export default function AIAgentsPage() {
                             <div className="rounded border p-2">
                               <p className="text-lg font-bold tabular-nums">
                                 {(
-                                  investigateResult.verification.adjusted_confidence * 100
+                                  (investigateResult.verification.adjusted_confidence ?? 0) * 100
                                 ).toFixed(1)}
                                 %
                               </p>
@@ -1618,7 +1622,7 @@ export default function AIAgentsPage() {
                                     {ar.status}
                                   </Badge>
                                   <span className="text-xs tabular-nums text-muted-foreground">
-                                    {ar.duration_ms.toFixed(0)}ms
+                                    {(ar.duration_ms ?? 0).toFixed(0)}ms
                                   </span>
                                 </div>
                               );

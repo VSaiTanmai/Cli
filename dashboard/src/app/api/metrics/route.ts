@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
   try {
     const data = await cached("metrics:dashboard", METRICS_CACHE_TTL_MS, async () => {
-      const [totalEvents, recentRate, alertCount, topSources, severityDist, eventsTimeline, uptimePct, criticalAlerts, tableCounts, evidenceStats, mitreStats] =
+      const [totalEvents, recentRate, alertCount, topSources, severityDist, eventsTimeline, uptimePct, criticalAlerts, tableCounts, evidenceStats, mitreStats, eventsTimelineFallback, recentRateFallback] =
         await Promise.allSettled([
           queryClickHouse<{ cnt: string }>(
             `SELECT
@@ -127,13 +127,30 @@ export async function GET(request: Request) {
              ORDER BY cnt DESC
              LIMIT 10`
           ),
+          // ── Fallback: events_per_minute for timeline when events_per_10s TTL expired ──
+          queryClickHouse<{ minute: string; cnt: string }>(
+            `SELECT minute, sum(event_count) AS cnt
+             FROM clif_logs.events_per_minute
+             WHERE minute >= now() - INTERVAL 60 MINUTE
+             GROUP BY minute
+             ORDER BY minute`
+          ),
+          // ── Fallback: recent rate from events_per_minute ──
+          queryClickHouse<{ eps: string }>(
+            `SELECT sum(event_count) / greatest(60, dateDiff('second', min(minute), max(minute) + INTERVAL 60 SECOND)) AS eps
+             FROM clif_logs.events_per_minute
+             WHERE minute >= now() - INTERVAL 5 MINUTE`
+          ),
         ]);
 
       return {
         totalEvents:
           totalEvents.status === "fulfilled" ? Number(totalEvents.value.data[0]?.cnt ?? 0) : 0,
-        ingestRate:
-          recentRate.status === "fulfilled" ? Number(recentRate.value.data[0]?.eps ?? 0) : 0,
+        ingestRate: (() => {
+          const primary = recentRate.status === "fulfilled" ? Number(recentRate.value.data[0]?.eps ?? 0) : 0;
+          if (primary > 0) return primary;
+          return recentRateFallback.status === "fulfilled" ? Number(recentRateFallback.value.data[0]?.eps ?? 0) : 0;
+        })(),
         activeAlerts:
           alertCount.status === "fulfilled" ? Number(alertCount.value.data[0]?.cnt ?? 0) : 0,
         topSources:
@@ -147,13 +164,13 @@ export async function GET(request: Request) {
                 count: Number(r.cnt),
               }))
             : [],
-        eventsTimeline:
-          eventsTimeline.status === "fulfilled"
-            ? eventsTimeline.value.data.map((r) => ({
-                time: r.minute,
-                count: Number(r.cnt),
-              }))
-            : [],
+        eventsTimeline: (() => {
+          const primary = eventsTimeline.status === "fulfilled" ? eventsTimeline.value.data : [];
+          if (primary.length > 0) return primary.map((r) => ({ time: r.minute, count: Number(r.cnt) }));
+          // Fallback to events_per_minute when events_per_10s TTL expired
+          const fallback = eventsTimelineFallback.status === "fulfilled" ? eventsTimelineFallback.value.data : [];
+          return fallback.map((r) => ({ time: r.minute, count: Number(r.cnt) }));
+        })(),
         uptime:
           uptimePct.status === "fulfilled" ? uptimePct.value : "—",
         criticalAlertCount:
