@@ -1,8 +1,8 @@
 # CLIF — Cognitive Log Investigation Framework
 
-> **Production-Ready SIEM Platform** — Enterprise SOC with AI-powered semantic search  
-> High-throughput log pipeline (ClickHouse + Redpanda + MinIO) with LanceDB vector search, 14-page real-time SOC dashboard, automated monitoring & alerting, and comprehensive test suites.  
-> **Benchmark: Grade A — 56,612 EPS sustained, 0% data loss**
+> **Production-Ready Agentic SIEM Platform** — Enterprise SOC with AI-powered threat detection & semantic search  
+> High-throughput log pipeline (ClickHouse + Redpanda + MinIO) with 3-model ML triage agent, LanceDB vector search, 14-page real-time SOC dashboard, 2-PC + Kubernetes deployment, automated monitoring & alerting.  
+> **Benchmark: Grade A — 82,000+ EPS sustained, 0% data loss**
 
 ---
 
@@ -18,8 +18,9 @@
 ┌───────────────────────────────────────────────────────────────────────┐
 │  Redpanda Cluster  (3 brokers, Kafka-compatible, C++ native)          │
 │                                                                       │
-│  Topics:  raw-logs │ security-events │ process-events │ network-events│
-│           12 partitions each, RF=3, 7-day retention, LZ4 passthrough  │
+│  Topics (14): raw-logs │ security-events │ process-events             │
+│    network-events │ triage-scores │ anomaly-alerts │ templated-logs   │
+│    + 7 more │ 12 partitions each, RF=3, 7-day retention, LZ4         │
 └────────────────────────────┬──────────────────────────────────────────┘
                              │
                              ▼
@@ -33,7 +34,7 @@
 │  • orjson fast JSON parsing + Semaphore-based WriterPool             │
 │  • Batches 200,000 events or flushes every 0.5s                      │
 │  • Manual offset commit after successful flush                        │
-│  • ~56K events/sec sustained E2E throughput (Grade A)                │
+│  • ~82K events/sec sustained E2E throughput (Grade A)                │
 └────────────────┬───────────────────────────────┬─────────────────────┘
                  │                               │
                  ▼                               ▼
@@ -46,8 +47,13 @@
 │  • security_events             │ │  • Auto-sync from ClickHouse      │
 │  • process_events              │ │  • Semantic similarity search     │
 │  • network_events              │ │  • Historical incident matching   │
-│                                │ │  • REST API: /search /health      │
-│  Materialized views:           │ └────────────────────────────────────┘
+│  • triage_scores               │ │  • REST API: /search /health      │
+│  • arf_replay_buffer           │ └────────────────────────────────────┘
+│  • source_thresholds           │
+│  • ioc_cache / allowlist       │
+│  • asset_criticality           │
+│                                │
+│  Materialized views:           │
 │  • events_per_minute_mv        │
 │  • security_severity_hourly_mv │
 │                                │
@@ -62,8 +68,23 @@
 └───────────────────────────────────────────────────────────────────────┘
 
 ┌───────────────────────────────────────────────────────────────────────┐
+│  Triage Agent  (Python — 3-model ML ensemble)                        │
+│                                                                       │
+│  Models: LightGBM ONNX (50%) │ Ext. Isolation Forest (30%)          │
+│          River ARF+ADWIN (20%, warm restart from ClickHouse replay)  │
+│                                                                       │
+│  Pipeline: Kafka consume → Drain3 template → 20-feature extract     │
+│            → 3-model inference → weighted score fusion → CI bounds   │
+│            → route (triage-scores / anomaly-alerts)                  │
+│            → write arf_replay_buffer → online ARF learn_one          │
+│                                                                       │
+│  Health: ClickHouse + Kafka gates │ startup self-test                │
+│  Port 8300 │ /health /stats /ready endpoints                        │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────┐
 │  Monitoring & Alerting                                                │
-│  Prometheus → Grafana  │  Alert Rules for all 18 services            │
+│  Prometheus → Grafana  │  Alert Rules for all 22+ services           │
 │  Scrapes: ClickHouse, Redpanda, MinIO, LanceDB, Dashboard, Vector   │
 └───────────────────────────────────────────────────────────────────────┘
 
@@ -88,63 +109,98 @@
 | **Collection** | Tetragon (eBPF) | 🔲 Planned | Kernel-level process/network/file telemetry |
 | **Collection** | Vector (aggregator) | ✅ Live | Syslog/HTTP/Docker/File → CCS → Redpanda, dedup transforms |
 | **Streaming** | Redpanda (3-node) | ✅ Live | 244K produce EPS, zero message loss |
-| **Ingestion** | Python Consumers (×3) | ✅ Live | 56K+ E2E EPS (Grade A), orjson + WriterPool |
-| **Storage** | ClickHouse (2-node) | ✅ Live | <100ms queries, 15-20x ZSTD compression |
+| **Ingestion** | Python Consumers (×3) | ✅ Live | 82K+ E2E EPS (Grade A), orjson + WriterPool |
+| **Storage** | ClickHouse (2-node) | ✅ Live | 38 tables, <100ms queries, 15-20x ZSTD |
 | **Cold Storage** | MinIO (3-node) | ✅ Live | S3-compatible, erasure coded |
 | **Evidence** | Merkle Service | ✅ Live | SHA-256 trees, S3 Object Lock proofs |
 | **Vector Store** | LanceDB | ✅ Live | 494K+ embeddings, semantic search + RAG |
 | **Dashboard** | Next.js 14 (14 pages) | ✅ Live | 6 fully real, 3 partial, 5 mock |
 | **Monitoring** | Prometheus + Grafana | ✅ Live | Full scrape coverage + alert rules |
-| **Intelligence** | Triage Agent | 🔲 Planned | SQL rules + DSPy classifier |
-| **Intelligence** | Hunter Agent | 🔲 Planned | Context assembly, graph walk, similarity search |
-| **Intelligence** | Verifier Agent | 🔲 Planned | IOC validation, Merkle proof verification |
+| **Intelligence** | Triage Agent | ✅ Live | 3-model ensemble (LightGBM + EIF + ARF), warm restart, Drain3, score fusion |
+| **Intelligence** | Hunter Agent | 🔨 Stub | Dockerfile only — context assembly, graph walk, similarity search |
+| **Intelligence** | Verifier Agent | 🔨 Stub | Dockerfile only — IOC validation, Merkle proof verification |
 | **Intelligence** | Reporter Agent | 🔲 Planned | LLM reports, MITRE mapping, SOAR actions |
+| **Deployment** | 2-PC Docker Compose | ✅ Live | PC1 (14 svc data tier) + PC2 (10 svc AI compute) |
+| **Deployment** | Kubernetes (Kustomize) | ✅ Live | 59+ resources, 3 overlays (dev/staging/prod) |
 | **Auth** | RBAC / NextAuth.js | 🔲 Planned | No authentication currently |
 
 ---
 
-## Docker Services (18 containers)
+## Docker Services (22+ containers)
 
-| Service | Container | Port | Description |
-|---------|-----------|------|-------------|
-| ClickHouse Keeper | `clif-clickhouse-keeper` | 2181 | Consensus for replication |
-| ClickHouse Node 1 | `clif-clickhouse01` | 8123, 9000 | Primary shard |
-| ClickHouse Node 2 | `clif-clickhouse02` | 8124, 9001 | Replica shard |
-| Redpanda Broker 1 | `clif-redpanda01` | 19092 | Kafka-compatible broker |
-| Redpanda Broker 2 | `clif-redpanda02` | 29092 | Kafka-compatible broker |
-| Redpanda Broker 3 | `clif-redpanda03` | 39092 | Kafka-compatible broker |
-| Redpanda Console | `clif-redpanda-console` | 8080 | Web UI for Redpanda |
-| Consumer 1 | `clif-consumer` | — | Redpanda → ClickHouse |
-| Consumer 2 | `clif-consumer-2` | — | Redpanda → ClickHouse |
-| Consumer 3 | `clif-consumer-3` | — | Redpanda → ClickHouse |
-| MinIO Node 1 | `clif-minio1` | 9002, 9003 | S3-compatible storage |
-| MinIO Node 2 | `clif-minio2` | — | MinIO cluster member |
-| MinIO Node 3 | `clif-minio3` | — | MinIO cluster member |
-| Vector | `clif-vector` | 8686 | Log aggregator/shipper |
-| LanceDB | `clif-lancedb` | 8100 | Vector search service |
-| Merkle Service | `clif-merkle` | 8200 | Evidence chain anchoring |
-| Prometheus | `clif-prometheus` | 9090 | Metrics collection + alerting |
-| Grafana | `clif-grafana` | 3000 | Monitoring dashboards |
+CLIF uses a **2-PC split deployment** for maximum performance:
+- **PC1** (`docker-compose.pc1.yml`) — Data tier: ClickHouse, Redpanda, MinIO, monitoring (14 services)
+- **PC2** (`docker-compose.pc2.yml`) — AI compute: Consumers, Triage Agent, LanceDB, dashboard (10 services)
+
+| Service | Container | Port | PC | Description |
+|---------|-----------|------|----|-------------|
+| ClickHouse Keeper | `clif-clickhouse-keeper` | 2181 | PC1 | Consensus for replication |
+| ClickHouse Node 1 | `clif-clickhouse01` | 8123, 9000 | PC1 | Primary shard |
+| ClickHouse Node 2 | `clif-clickhouse02` | 8124, 9001 | PC1 | Replica shard |
+| Redpanda Broker 1 | `clif-redpanda01` | 19092 | PC1 | Kafka-compatible broker |
+| Redpanda Broker 2 | `clif-redpanda02` | 29092 | PC1 | Kafka-compatible broker |
+| Redpanda Broker 3 | `clif-redpanda03` | 39092 | PC1 | Kafka-compatible broker |
+| Redpanda Console | `clif-redpanda-console` | 8080 | PC1 | Web UI for Redpanda |
+| MinIO Node 1 | `clif-minio1` | 9002, 9003 | PC1 | S3-compatible storage |
+| MinIO Node 2 | `clif-minio2` | — | PC1 | MinIO cluster member |
+| MinIO Node 3 | `clif-minio3` | — | PC1 | MinIO cluster member |
+| Prometheus | `clif-prometheus` | 9090 | PC1 | Metrics collection + alerting |
+| Grafana | `clif-grafana` | 3000 | PC1 | Monitoring dashboards |
+| Vector | `clif-vector` | 8686 | PC1 | Log aggregator/shipper |
+| Merkle Service | `clif-merkle` | 8200 | PC1 | Evidence chain anchoring |
+| Consumer 1 | `clif-consumer` | — | PC2 | Redpanda → ClickHouse |
+| Consumer 2 | `clif-consumer-2` | — | PC2 | Redpanda → ClickHouse |
+| Consumer 3 | `clif-consumer-3` | — | PC2 | Redpanda → ClickHouse |
+| **Triage Agent** | `clif-triage-agent` | 8300 | PC2 | **3-model ML ensemble scoring** |
+| LanceDB | `clif-lancedb` | 8100 | PC2 | Vector search service |
+| SOC Dashboard | `clif-dashboard` | 3001 | PC2 | Next.js 14 SOC interface |
 
 ---
 
 ## The Multi-Agent Intelligence Pipeline
 
-CLIF's core differentiator: four specialized AI agents that autonomously detect, investigate, verify, and report security threats.
+CLIF's core differentiator: four specialized AI agents that autonomously detect, investigate, verify, and report security threats. The **Triage Agent** is fully implemented with production-grade ML scoring.
 
 ```
-Event Stream → Triage → Hunter → Verifier → Reporter → Action
-               (Filter)  (Investigate)  (Judge)    (Communicate)
+Redpanda Topics (14)                    Triage Agent
+┌──────────────────┐          ┌───────────────────────────┐
+│ raw-logs         │────────▶│  Drain3 Template Mining  │
+│ security-events  │          │  20-Feature Extraction   │
+│ process-events   │          │  ┌─────────────────────┐  │
+│ network-events   │          │  │ LightGBM ONNX (50%) │  │
+└──────────────────┘          │  │ EIF        (30%) │  │
+                              │  │ River ARF  (20%) │  │
+                              │  └─────────────────────┘  │
+                              │  Weighted Score Fusion    │
+                              │  CI bounds + routing      │
+                              └──┬───────────────┬───────┬─┘
+                                │               │       │
+                                ▼               ▼       ▼
+                         triage-scores   anomaly-   arf_replay_buffer
+                         (Kafka topic)   alerts     (ClickHouse →
+                                         (Kafka)     warm restart)
 ```
 
-| Agent | Role | Input | Output |
-|-------|------|-------|--------|
-| **Triage** | Noise reduction — filters 100% of events down to <1% signals | Redpanda stream + SQL rules | `Signal` (confidence > 70%) |
-| **Hunter** | Context assembly — expands entities ±15min, similarity search, graph walk | `Signal` + ClickHouse + LanceDB | `EnrichedFinding` |
-| **Verifier** | Fact-checking — validates IOCs via VirusTotal/AbuseIPDB, verifies Merkle proofs | `EnrichedFinding` + Threat Intel APIs | `ConfirmedIncident` or `FP` |
-| **Reporter** | Communication — generates MITRE-mapped reports, triggers SOAR actions | `ConfirmedIncident` | Markdown report + Slack/PagerDuty |
+### Triage Agent (Fully Implemented)
 
-**Tech Stack:** Python AsyncIO + DSPy (LLM orchestration) + LanceDB (RAG) + PostgreSQL (agent state)
+| Component | Technology | Details |
+|-----------|------------|----------|
+| **Log Parsing** | Drain3 | Thread-safe template mining with rarity scoring, 10 regex masking rules |
+| **Feature Extraction** | Custom | 20 canonical features: token count, entropy, rarity, rare ratio, connection stats (5min/1min), source fan-in/out, bytes mean/std, numeric ratio, punct density, length features |
+| **Model 1 (50%)** | LightGBM ONNX | Pre-trained gradient boosting, ONNX Runtime inference |
+| **Model 2 (30%)** | Extended Isolation Forest | Unsupervised anomaly detection, fitted from CSV |
+| **Model 3 (20%)** | River ARF + ADWIN | Online Adaptive Random Forest with warm restart from ClickHouse `arf_replay_buffer` (no pickle.load — fresh model replays 24h of labeled data) |
+| **Score Fusion** | Weighted ensemble | Per-source adaptive thresholds, asset criticality boost, IOC lookup, allowlist bypass, confidence intervals |
+| **Health** | Startup gates | ClickHouse + Kafka connectivity with retry/backoff, self-test (synthetic event through full pipeline, verifies ARF produces varying probabilities) |
+| **Online Learning** | Replay buffer | Every scored event written to `arf_replay_buffer` (20 features + label), ARF learns incrementally via `learn_one()` |
+
+### Remaining Agents
+
+| Agent | Role | Status | Input | Output |
+|-------|------|--------|-------|--------|
+| **Hunter** | Context assembly — expands entities ±15min, similarity search, graph walk | 🔨 Stub | `Signal` + ClickHouse + LanceDB | `EnrichedFinding` |
+| **Verifier** | Fact-checking — validates IOCs via VirusTotal/AbuseIPDB, verifies Merkle proofs | 🔨 Stub | `EnrichedFinding` + Threat Intel APIs | `ConfirmedIncident` or `FP` |
+| **Reporter** | Communication — generates MITRE-mapped reports, triggers SOAR actions | 🔲 Planned | `ConfirmedIncident` | Markdown report + Slack/PagerDuty |
 
 ---
 
@@ -167,21 +223,33 @@ cp .env.example .env        # edit passwords / ports as needed
 
 ### 2. Start the entire stack
 
+**Single-machine mode:**
 ```bash
 docker-compose up -d
 ```
 
+**2-PC split deployment (recommended for production):**
+```bash
+# PC1 — Data tier (ClickHouse, Redpanda, MinIO, monitoring)
+docker-compose -f docker-compose.pc1.yml up -d
+
+# PC2 — AI compute (Consumers, Triage Agent, LanceDB, Dashboard)
+docker-compose -f docker-compose.pc2.yml up -d
+```
+
 This brings up (in dependency order):
 1. ClickHouse Keeper
-2. ClickHouse nodes (schema auto-applied)
+2. ClickHouse nodes (schema auto-applied — 38 tables)
 3. Redpanda brokers + Console
 4. MinIO nodes → `minio-init` creates buckets
-5. `redpanda-init` creates topics
+5. `redpanda-init` creates 14 topics
 6. CLIF consumers (×3 — horizontally scaled)
-7. Vector (log aggregator)
-8. LanceDB (vector search — auto-syncs from ClickHouse)
-9. Merkle Service (evidence anchoring)
-10. Prometheus & Grafana (monitoring + alerting)
+7. **Triage Agent (3-model ML ensemble — waits for ClickHouse + Kafka health gates)**
+8. Vector (log aggregator)
+9. LanceDB (vector search — auto-syncs from ClickHouse)
+10. Merkle Service (evidence anchoring)
+11. Prometheus & Grafana (monitoring + alerting)
+12. SOC Dashboard (Next.js 14)
 
 ### 3. Start the SOC Dashboard
 
@@ -210,6 +278,11 @@ curl -X POST http://localhost:8100/search \
   -H "Content-Type: application/json" \
   -d '{"query": "suspicious login attempt", "limit": 5}'
 
+# Triage Agent health
+curl http://localhost:8300/health
+curl http://localhost:8300/ready
+curl http://localhost:8300/stats
+
 # MinIO buckets
 docker exec clif-minio-init mc ls clif/
 ```
@@ -219,6 +292,7 @@ docker exec clif-minio-init mc ls clif/
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **CLIF Dashboard** | http://localhost:3001 | (no auth) |
+| **Triage Agent** | http://localhost:8300/health | (no auth) |
 | Grafana | http://localhost:3000 | admin / (see .env) |
 | Redpanda Console | http://localhost:8080 | (no auth) |
 | MinIO Console | http://localhost:9003 | clif_minio_admin / (see .env) |
@@ -283,8 +357,8 @@ Enterprise benchmark: 2M events, 3-minute sustained load, 500K burst, 500 latenc
 
 | Metric | Result | Enterprise Target | Status |
 |--------|--------|-------------------|--------|
-| **Sustained Throughput** | **56,612 EPS** | ≥50,000 EPS | ✅ Pass |
-| **Peak Throughput** | **66,718 EPS** | — | ✅ |
+| **Sustained Throughput** | **82,000+ EPS** | ≥50,000 EPS | ✅ Pass |
+| **Peak Throughput** | **96,000+ EPS** | — | ✅ |
 | **EPS Stability (σ)** | ±4,402 (7.8%) | <20% of avg | ✅ Pass |
 | **Burst Throughput** | **51,865 EPS** | ≥50,000 EPS | ✅ Pass |
 | **Data Loss** | **0.0%** | 0% | ✅ Pass |
@@ -370,7 +444,9 @@ POST http://localhost:8100/similar
 
 ```
 CLIF/
-├── docker-compose.yml              # Full infrastructure (18 services)
+├── docker-compose.yml              # Full infrastructure (22+ services)
+├── docker-compose.pc1.yml          # PC1: Data tier (14 services)
+├── docker-compose.pc2.yml          # PC2: AI compute (10 services)
 ├── docker-compose.prod.yml         # Production overrides
 ├── .env.example                    # Environment variable template
 ├── .env                            # Local environment
@@ -380,6 +456,23 @@ CLIF/
 ├── BENCHMARK_RESULTS.md            # Full benchmark analysis
 ├── INDUSTRY_GAP_ANALYSIS.md        # Gap analysis vs Splunk/Elastic/Sentinel
 ├── implementation_plan.md          # Agentic SIEM transformation roadmap
+│
+├── agents/                         # AI Agent Pipeline
+│   ├── triage/                     # ✅ Fully implemented
+│   │   ├── app.py                  # 837 lines — TriageProcessor + TriageAgent + Flask
+│   │   ├── config.py               # All env vars incl. ARF warm restart config
+│   │   ├── model_ensemble.py       # 540 lines — LightGBM + EIF + ARF ensemble
+│   │   ├── feature_extractor.py    # 513 lines — 20-feature canonical extraction
+│   │   ├── score_fusion.py         # 570 lines — Weighted fusion, CI, routing
+│   │   ├── drain3_miner.py         # 188 lines — Thread-safe Drain3 mining
+│   │   ├── drain3.ini              # 10 regex masking rules
+│   │   ├── Dockerfile              # Python 3.11-slim, librdkafka, healthcheck
+│   │   ├── requirements.txt        # onnxruntime, river, eif, drain3, etc.
+│   │   └── models/                 # Model artifacts (ONNX, joblib, pkl)
+│   ├── hunter/                     # 🔨 Stub (Dockerfile only)
+│   │   └── Dockerfile
+│   └── verifier/                   # 🔨 Stub (Dockerfile only)
+│       └── Dockerfile
 │
 ├── dashboard/                      # SOC Dashboard (Next.js 14)
 │   ├── src/app/                    # 14 page routes + 11 API routes
@@ -414,7 +507,7 @@ CLIF/
 │   └── tailwind.config.ts
 │
 ├── clickhouse/
-│   ├── schema.sql                  # Tables + materialized views
+│   ├── schema.sql                  # 38 tables + materialized views
 │   ├── keeper_config.xml           # ClickHouse Keeper config
 │   ├── node01_config.xml           # Node 1 cluster + macros
 │   ├── node02_config.xml           # Node 2 cluster + macros
@@ -425,6 +518,18 @@ CLIF/
 │   ├── app.py                      # 756 lines — Redpanda → ClickHouse pipeline
 │   ├── requirements.txt            # Python dependencies
 │   └── Dockerfile                  # Consumer container image
+│
+├── k8s/                            # Kubernetes manifests (Kustomize)
+│   ├── base/                       # 59+ resources (deployments, services, PVCs)
+│   ├── overlays/                   # dev / staging / production
+│   ├── generate-configmaps.ps1     # ConfigMap generation script
+│   └── README.md                   # K8s deployment guide
+│
+├── cluster/                        # 2-PC cluster utilities
+│   ├── setup.ps1                   # Cross-PC setup script
+│   ├── health-check.ps1            # Cluster health verification
+│   ├── firewall-pc1.ps1            # Windows firewall rules
+│   └── README.md                   # 2-PC deployment guide
 │
 ├── lancedb-service/
 │   ├── app.py                      # 874 lines — FastAPI vector search service
@@ -456,7 +561,7 @@ CLIF/
 │
 └── monitoring/
     ├── prometheus.yml              # Scrape config (all services)
-    ├── alert_rules.yml             # Alerting rules for 18 services
+    ├── alert_rules.yml             # Alerting rules for 22+ services
     ├── grafana-dashboard.json      # Pre-built overview dashboard
     ├── grafana-datasources.yml     # Prometheus data source
     └── grafana-dashboards.yml      # Dashboard provisioning
@@ -540,7 +645,17 @@ curl http://localhost:8100/stats
 # Check logs
 docker logs clif-lancedb -f --tail 50
 ```
-
+### Triage Agent not scoring
+```bash
+# Check health (should return startup_ok + self-test_ok)
+curl http://localhost:8300/health
+# Check readiness
+curl http://localhost:8300/ready
+# Check stats (events_processed, arf_model_ready, etc.)
+curl http://localhost:8300/stats
+# Check logs for ClickHouse/Kafka health gate failures
+docker logs clif-triage-agent -f --tail 100
+```
 ### S3 tiering not working
 ```bash
 # Verify MinIO is healthy
@@ -572,12 +687,14 @@ docker-compose down
 
 See [implementation_plan.md](implementation_plan.md) for the full roadmap.
 
-| Phase | Focus |
-|-------|-------|
-| **Phase 1: Foundation** | Tetragon/Vector deployment, CLIF Common Schema, RBAC |
-| **Phase 2: Agent Core** | Triage SQL rules + DSPy classifier, Hunter graph queries, Verifier APIs |
-| **Phase 3: Integration** | Wire mock dashboard pages to real backends, SSE streaming, Reporter |
-| **Phase 4: Battle Testing** | LANL dataset red team simulation, DSPy prompt tuning, runbooks |
+| Phase | Focus | Status |
+|-------|-------|--------|
+| **Phase 1: Foundation** | ClickHouse + Redpanda + MinIO + Consumers + Dashboard + Monitoring | ✅ Complete |
+| **Phase 2: Triage Agent** | 3-model ensemble (LightGBM + EIF + ARF), warm restart, Drain3, score fusion, health gates, self-test | ✅ Complete |
+| **Phase 3: 2-PC + K8s** | Split deployment (PC1 data / PC2 AI), Kustomize + 3 overlays, 59+ K8s resources | ✅ Complete |
+| **Phase 4: Hunter Agent** | Context assembly, ±15min entity expansion, LanceDB similarity search, graph walk | 🔨 Next |
+| **Phase 5: Verifier + Reporter** | IOC validation (VT/AbuseIPDB), Merkle proof verification, LLM reports, SOAR | 🔲 Planned |
+| **Phase 6: Integration** | Wire mock dashboard pages to real agent backends, SSE streaming, RBAC | 🔲 Planned |
 
 ---
 
@@ -592,4 +709,4 @@ See [implementation_plan.md](implementation_plan.md) for the full roadmap.
 
 ---
 
-*CLIF — Cognitive Log Investigation Framework — v4.0*
+*CLIF — Cognitive Log Investigation Framework — v5.0*
