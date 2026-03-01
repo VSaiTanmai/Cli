@@ -1,7 +1,7 @@
 # CLIF — Cognitive Log Investigation Framework
 
-> **Agentic SIEM Platform (AI Agents — Coming Soon)** — Enterprise SOC with AI-powered threat detection & semantic search  
-> High-throughput log pipeline (ClickHouse + Redpanda + MinIO), LanceDB vector search, 14-page real-time SOC dashboard, 2-PC + Kubernetes deployment, automated monitoring & alerting. AI agent pipeline (Triage → Hunter → Verifier → Reporter) code-complete for Triage; remaining agents to be added in the near future.  
+> **Agentic SIEM Platform** — Enterprise SOC with AI-powered threat detection & semantic search  
+> High-throughput log pipeline (ClickHouse + Redpanda + MinIO), LanceDB vector search, 14-page real-time SOC dashboard, 2-PC + Kubernetes deployment, automated monitoring & alerting. AI agent pipeline (Triage → Hunter → Verifier → Reporter) — **Triage Agent fully integrated with trained models**; remaining agents to be added in the near future.  
 > **Benchmark: Grade A — 82,000+ EPS sustained, 0% data loss**
 
 ---
@@ -116,7 +116,7 @@
 | **Vector Store** | LanceDB | ✅ Live | 494K+ embeddings, semantic search + RAG |
 | **Dashboard** | Next.js 14 (14 pages) | ✅ Live | 6 fully real, 3 partial, 5 mock |
 | **Monitoring** | Prometheus + Grafana | ✅ Live | Full scrape coverage + alert rules |
-| **Intelligence** | Triage Agent | ⚠️ Code Complete | 3-model ensemble (LightGBM + EIF + ARF), warm restart, Drain3, score fusion — **model artifacts not yet deployed; to be integrated** |
+| **Intelligence** | Triage Agent | ✅ Ready | 3-model ensemble (LightGBM + EIF + ARF), warm restart, Drain3, score fusion — **model artifacts deployed** |
 | **Intelligence** | Hunter Agent | � Planned | Dockerfile stub only — context assembly, graph walk, similarity search — **to be added in near future** |
 | **Intelligence** | Verifier Agent | 🔲 Planned | Dockerfile stub only — IOC validation, Merkle proof verification — **to be added in near future** |
 | **Intelligence** | Reporter Agent | 🔲 Planned | LLM reports, MITRE mapping, SOAR actions — **to be added in near future** |
@@ -159,7 +159,7 @@ CLIF uses a **2-PC split deployment** for maximum performance:
 
 ## The Multi-Agent Intelligence Pipeline
 
-CLIF's core differentiator: four specialized AI agents that will autonomously detect, investigate, verify, and report security threats. The **Triage Agent** source code is complete (3,426 lines across 8 files) but model artifacts are not yet deployed. The remaining three agents (Hunter, Verifier, Reporter) are **planned for near-future implementation**. See [TRIAGE_AGENT_DOCUMENTATION.md](TRIAGE_AGENT_DOCUMENTATION.md) and [PIPELINE_READINESS_REPORT.md](PIPELINE_READINESS_REPORT.md) for full details.
+CLIF's core differentiator: four specialized AI agents that will autonomously detect, investigate, verify, and report security threats. The **Triage Agent** is fully integrated (3,426 lines across 8 files, model artifacts deployed). The remaining three agents (Hunter, Verifier, Reporter) are **planned for near-future implementation**. See [TRIAGE_AGENT_DOCUMENTATION.md](TRIAGE_AGENT_DOCUMENTATION.md) and [PIPELINE_READINESS_REPORT.md](PIPELINE_READINESS_REPORT.md) for full details.
 
 ```
 Redpanda Topics (14)                    Triage Agent
@@ -181,7 +181,7 @@ Redpanda Topics (14)                    Triage Agent
                                          (Kafka)     warm restart)
 ```
 
-### Triage Agent (Code Complete — Models Pending)
+### Triage Agent (Fully Integrated)
 
 | Component | Technology | Details |
 |-----------|------------|----------|
@@ -244,7 +244,7 @@ This brings up (in dependency order):
 4. MinIO nodes → `minio-init` creates buckets
 5. `redpanda-init` creates 14 topics
 6. CLIF consumers (×3 — horizontally scaled)
-7. **Triage Agent (3-model ML ensemble — code complete, model artifacts to be deployed)**
+7. **Triage Agent (3-model ML ensemble — fully integrated with model artifacts)**
 8. Vector (log aggregator)
 9. LanceDB (vector search — auto-syncs from ClickHouse)
 10. Merkle Service (evidence anchoring)
@@ -292,7 +292,7 @@ docker exec clif-minio-init mc ls clif/
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **CLIF Dashboard** | http://localhost:3001 | (no auth) |
-| **Triage Agent** | http://localhost:8300/health | (no auth, requires model artifacts) |
+| **Triage Agent** | http://localhost:8300/health | (no auth) |
 | Grafana | http://localhost:3000 | admin / (see .env) |
 | Redpanda Console | http://localhost:8080 | (no auth) |
 | MinIO Console | http://localhost:9003 | clif_minio_admin / (see .env) |
@@ -468,7 +468,7 @@ CLIF/
 │   │   ├── drain3.ini              # 10 regex masking rules
 │   │   ├── Dockerfile              # Python 3.11-slim, librdkafka, healthcheck
 │   │   ├── requirements.txt        # onnxruntime, river, eif, drain3, etc.
-│   │   └── models/                 # Model artifacts (ONNX, joblib, pkl) — NOT YET DEPLOYED
+│   │   └── models/                 # Model artifacts (ONNX, joblib, pkl) — deployed
 │   ├── hunter/                     # � To be added (Dockerfile stub only)
 │   │   └── Dockerfile
 │   └── verifier/                   # 🔲 To be added (Dockerfile stub only)
@@ -690,7 +690,7 @@ See [implementation_plan.md](implementation_plan.md) for the full roadmap.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **Phase 1: Foundation** | ClickHouse + Redpanda + MinIO + Consumers + Dashboard + Monitoring | ✅ Complete |
-| **Phase 2: Triage Agent** | 3-model ensemble (LightGBM + EIF + ARF), warm restart, Drain3, score fusion, health gates, self-test | ⚠️ Code Complete (model artifacts pending) |
+| **Phase 2: Triage Agent** | 3-model ensemble (LightGBM + EIF + ARF), warm restart, Drain3, score fusion, health gates, self-test | ✅ Complete |
 | **Phase 3: 2-PC + K8s** | Split deployment (PC1 data / PC2 AI), Kustomize + 3 overlays, 59+ K8s resources | ✅ Complete |
 | **Phase 4: Hunter Agent** | Context assembly, ±15min entity expansion, LanceDB similarity search, graph walk | � To Be Added |
 | **Phase 5: Verifier + Reporter** | IOC validation (VT/AbuseIPDB), Merkle proof verification, LLM reports, SOAR | 🔲 To Be Added |
@@ -709,7 +709,7 @@ See [implementation_plan.md](implementation_plan.md) for the full roadmap.
 | [TRIAGE_AGENT_DOCUMENTATION.md](TRIAGE_AGENT_DOCUMENTATION.md) | Triage Agent deep dive & full agent pipeline data flow |
 | [PIPELINE_READINESS_REPORT.md](PIPELINE_READINESS_REPORT.md) | Pipeline readiness audit for AI agent integration |
 
-> **Note:** AI Agents (Hunter, Verifier, Reporter) are **not yet implemented** and will be added in the near future. The Triage Agent source code is complete but requires model artifact deployment before it can run. See the roadmap above and the linked documentation for details.
+> **Note:** The **Triage Agent is fully integrated** with trained model artifacts (LightGBM ONNX + EIF + ARF). The remaining agents (Hunter, Verifier, Reporter) are **not yet implemented** and will be added in the near future. See the roadmap above and the linked documentation for details.
 
 ---
 
