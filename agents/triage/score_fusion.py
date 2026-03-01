@@ -497,6 +497,18 @@ class ScoreFusion:
             # ── Adjusted score ──────────────────────────────────────────
             adjusted = min(1.0, (float(combined[i]) + score_boost) * asset_multiplier)
 
+            # ── EIF anomaly override ────────────────────────────────────
+            # When the unsupervised EIF strongly flags an event as anomalous
+            # but the supervised LightGBM doesn't recognise the pattern,
+            # the combined score gets diluted.  This override ensures that
+            # novel anomalies are at least investigated (MONITOR).
+            eif_override_applied = 0
+            if float(eif[i]) >= config.EIF_ANOMALY_OVERRIDE_THRESHOLD:
+                floor = config.EIF_ANOMALY_OVERRIDE_FLOOR
+                if adjusted < floor:
+                    adjusted = floor
+                    eif_override_applied = 1
+
             # ── Per-source thresholds ───────────────────────────────────
             if self._source_thresholds:
                 suspicious_th, anomalous_th = self._source_thresholds.get_thresholds(

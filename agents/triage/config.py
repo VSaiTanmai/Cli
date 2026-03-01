@@ -145,6 +145,21 @@ TEMPLATE_RARITY_BOOST_MAX = float(
 )
 IOC_MATCH_SCORE_BOOST = float(os.getenv("IOC_MATCH_SCORE_BOOST", "0.15"))
 
+# ── EIF Anomaly Override ────────────────────────────────────────────────────
+# When the unsupervised EIF strongly flags an event as anomalous, the combined
+# score should never drop below the suspicious threshold. Without this, novel
+# attacks unseen by LightGBM get DISCARDED because LGBM's 60-80% weight
+# drowns out the EIF signal.
+# Example: reverse shell → LGBM=0.005, EIF=0.698. Without override:
+#   cold combined = 0.80*0.005 + 0.20*0.698 = 0.144 → DISCARDED!
+# With override: EIF ≥ 0.70 → combined floor = suspicious threshold → MONITOR.
+EIF_ANOMALY_OVERRIDE_THRESHOLD = float(
+    os.getenv("EIF_ANOMALY_OVERRIDE_THRESHOLD", "0.65")
+)
+EIF_ANOMALY_OVERRIDE_FLOOR = float(
+    os.getenv("EIF_ANOMALY_OVERRIDE_FLOOR", "0.45")  # just above suspicious
+)
+
 # ── Startup Self-Test ───────────────────────────────────────────────────────
 
 SELFTEST_ENABLED = os.getenv("SELFTEST_ENABLED", "true").lower() == "true"
