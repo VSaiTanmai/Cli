@@ -10,6 +10,11 @@ Architecture:
                     → ClickHouse (arf_replay_buffer for warm restart)
                     → ClickHouse (triage_scores table via consumer)
 
+Event linkage:
+    Each Kafka message receives a deterministic UUID-v5 derived from
+    topic:partition:offset.  The consumer service uses the same UUID for
+    raw_logs.event_id, so triage_scores can JOIN back to raw_logs.
+
 Startup sequence:
     1. Wait for ClickHouse + Kafka to become healthy (retry with backoff)
     2. Load all 3 models (ARF does warm restart from replay buffer)
@@ -44,6 +49,17 @@ from drain3_miner import Drain3Miner
 from feature_extractor import ConnectionTracker, FeatureExtractor, FEATURE_NAMES
 from model_ensemble import ModelEnsemble
 from score_fusion import AllowlistChecker, IOCLookup, ScoreFusion, TriageResult
+
+# ── Deterministic event_id from Kafka coordinates ────────────────────────────
+# Must use the SAME namespace as consumer/app.py so that
+# raw_logs.event_id == triage_scores.event_id for the same event.
+
+_CLIF_EVENT_NS = uuid.UUID("c71f0000-e1d0-4a6b-b5c3-deadbeef0042")
+
+
+def deterministic_event_id(topic: str, partition: int, offset: int) -> str:
+    """Derive a stable UUID-v5 from Kafka message coordinates."""
+    return str(uuid.uuid5(_CLIF_EVENT_NS, f"{topic}:{partition}:{offset}"))
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
@@ -668,6 +684,12 @@ class TriageAgent:
                     logger.warning("Failed to parse message: %s", e)
                     continue
 
+                # Embed deterministic event_id so triage_scores.event_id
+                # matches raw_logs.event_id for the same Kafka message.
+                event["event_id"] = deterministic_event_id(
+                    msg.topic(), msg.partition(), msg.offset(),
+                )
+
                 batch_events.append(event)
                 batch_topics.append(msg.topic())
 
@@ -706,7 +728,8 @@ class TriageAgent:
             # Serialize to JSON
             result_dict = asdict(result)
 
-            # Assign a unique score_id if event_id is empty
+            # event_id is always set by deterministic_event_id();
+            # fallback only guards against impossible edge cases.
             if not result_dict.get("event_id"):
                 result_dict["event_id"] = str(uuid.uuid4())
 

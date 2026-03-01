@@ -12,7 +12,7 @@ Production-grade consumer with:
   • Graceful shutdown with drain and final synchronous commit
   • Connection-pool pattern: one ClickHouseWriter per flush worker
   • Health metrics via StatsReporter with per-second rate tracking
-  • Server-side UUID generation (event_id omitted from inserts)
+  • Deterministic event_id (UUID5 from Kafka topic:partition:offset)
   • async_insert=1 with 100ms timeout — server-side micro-batch buffering
   • Horizontally scalable: run multiple instances in same consumer group
 
@@ -46,8 +46,22 @@ from datetime import datetime, timezone
 from threading import Event, Lock, Semaphore, Thread
 from typing import Any
 
+import uuid as _uuid_mod
+
 from confluent_kafka import Consumer, Producer, KafkaError, KafkaException
 from clickhouse_driver import Client as CHClient
+
+# ── Deterministic event_id from Kafka coordinates ────────────────────────────
+# Both the consumer and triage agent read the same Kafka messages.
+# UUID5(namespace, "topic:partition:offset") produces an identical, stable
+# event_id for each message, enabling JOINs across raw_logs ↔ triage_scores.
+
+_CLIF_EVENT_NS = _uuid_mod.UUID("c71f0000-e1d0-4a6b-b5c3-deadbeef0042")
+
+
+def deterministic_event_id(topic: str, partition: int, offset: int) -> str:
+    """Derive a stable UUID-v5 from Kafka message coordinates."""
+    return str(_uuid_mod.uuid5(_CLIF_EVENT_NS, f"{topic}:{partition}:{offset}"))
 
 try:
     import orjson as _json  # 3-10x faster JSON parsing (C/Rust)
@@ -113,6 +127,9 @@ TOPIC_TABLE_MAP: dict[str, str] = {
 _TABLE_TO_TOPIC: dict[str, str] = {v: k for k, v in TOPIC_TABLE_MAP.items()}
 
 TOPICS = list(TOPIC_TABLE_MAP.keys())
+
+# Ingestion-tier tables that receive a deterministic event_id from Kafka coords
+_INPUT_TABLES = {"raw_logs", "security_events", "process_events", "network_events"}
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -200,14 +217,15 @@ def _ensure_dict(meta: Any) -> dict:
 
 
 # ── Row builders (one per target table) ──────────────────────────────────────
-# event_id / raw_log_event_id OMITTED — ClickHouse generates UUIDs server-side
-# via DEFAULT generateUUIDv4() using hardware-accelerated intrinsics.
+# event_id is now injected from Kafka coordinates (deterministic UUID5) so that
+# the same event gets the same ID in raw_logs AND triage_scores, enabling JOINs.
 
 
 def _build_raw_log_row(msg: dict) -> list:
     meta = _ensure_dict(msg.get("metadata"))
     return [
-        _parse_timestamp(msg.get("timestamp")),     # timestamp
+        _safe_uuid_str(msg.get("_event_id")),        # event_id (from Kafka coords)
+        _parse_timestamp(msg.get("timestamp")),      # timestamp
         _now_dt(),                                   # received_at
         _safe_str(msg.get("level"), "INFO"),         # level
         _safe_str(msg.get("source"), "unknown"),     # source
@@ -224,6 +242,7 @@ def _build_raw_log_row(msg: dict) -> list:
 def _build_security_event_row(msg: dict) -> list:
     meta = _ensure_dict(msg.get("metadata"))
     return [
+        _safe_uuid_str(msg.get("_event_id")),        # event_id (from Kafka coords)
         _parse_timestamp(msg.get("timestamp")),
         _safe_int(msg.get("severity"), 0),
         _safe_str(msg.get("category"), "unknown"),
@@ -244,6 +263,7 @@ def _build_security_event_row(msg: dict) -> list:
 def _build_process_event_row(msg: dict) -> list:
     meta = _ensure_dict(msg.get("metadata"))
     return [
+        _safe_uuid_str(msg.get("_event_id")),        # event_id (from Kafka coords)
         _parse_timestamp(msg.get("timestamp")),
         _safe_str(msg.get("hostname")),
         _safe_int(msg.get("pid")),
@@ -268,6 +288,7 @@ def _build_process_event_row(msg: dict) -> list:
 def _build_network_event_row(msg: dict) -> list:
     meta = _ensure_dict(msg.get("metadata"))
     return [
+        _safe_uuid_str(msg.get("_event_id")),        # event_id (from Kafka coords)
         _parse_timestamp(msg.get("timestamp")),
         _safe_str(msg.get("hostname")),
         _safe_str(msg.get("src_ip"), "0.0.0.0"),
@@ -454,25 +475,31 @@ def _build_feedback_label_row(msg: dict) -> list:
     ]
 
 
-# Column lists — event_id and raw_log_event_id OMITTED (server-generated UUIDs)
+# Column lists — event_id NOW explicitly supplied from deterministic Kafka UUID5.
+# ClickHouse DEFAULT generateUUIDv4() only fires when the column is omitted;
+# providing it here ensures raw_logs.event_id == triage_scores.event_id.
 RAW_LOGS_COLUMNS = [
+    "event_id",
     "timestamp", "received_at", "level", "source", "message",
     "metadata", "user_id", "ip_address", "request_id",
     "anchor_tx_id", "anchor_batch_hash",
 ]
 SECURITY_EVENTS_COLUMNS = [
+    "event_id",
     "timestamp", "severity", "category", "source", "description",
     "user_id", "ip_address", "hostname",
     "mitre_tactic", "mitre_technique", "ai_confidence", "ai_explanation",
     "anchor_tx_id", "metadata",
 ]
 PROCESS_EVENTS_COLUMNS = [
+    "event_id",
     "timestamp", "hostname", "pid", "ppid", "uid", "gid",
     "binary_path", "arguments", "cwd", "exit_code",
     "container_id", "pod_name", "namespace", "syscall",
     "is_suspicious", "detection_rule", "anchor_tx_id", "metadata",
 ]
 NETWORK_EVENTS_COLUMNS = [
+    "event_id",
     "timestamp", "hostname",
     "src_ip", "src_port", "dst_ip", "dst_port",
     "protocol", "direction", "bytes_sent", "bytes_received", "duration_ms",
@@ -481,7 +508,7 @@ NETWORK_EVENTS_COLUMNS = [
     "anchor_tx_id", "metadata",
 ]
 
-# ── AI pipeline column lists (auto-generated IDs omitted — server-side UUIDs) ──
+# ── AI pipeline column lists (score_id still server-generated; event_id from triage agent) ──
 
 TRIAGE_SCORES_COLUMNS = [
     "event_id", "timestamp", "source_type", "hostname", "source_ip", "user_id",
@@ -983,6 +1010,14 @@ def main() -> None:
                     _buffer_dlq_event(buffers, topic, raw_msg.value(), str(exc), "json_parse")
                     _publish_to_dlq(raw_msg, str(exc), "json_parse")
                     continue
+
+                # Inject deterministic event_id for ingestion-tier tables
+                # so raw_logs.event_id == triage_scores.event_id for the
+                # same Kafka message (both services derive the same UUID5).
+                if table in _INPUT_TABLES:
+                    payload["_event_id"] = deterministic_event_id(
+                        topic, raw_msg.partition(), raw_msg.offset(),
+                    )
 
                 try:
                     row = TABLE_META[table]["builder"](payload)
