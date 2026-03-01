@@ -1,0 +1,25 @@
+{
+  "lgbm": {
+    "active": "v1.0.0",
+    "candidate": null,
+    "candidate_pct": 0,
+    "file": "models/lgbm_v1.0.0.onnx"
+  },
+  "eif": {
+    "active": "v1.0.0",
+    "candidate": null,
+    "file": "models/eif_v1.0.0.pkl",
+    "threshold": "models/eif_threshold.npy"
+  },
+  "arf": {
+    "active": "v1.0.0",
+    "candidate": null,
+    "file": "models/arf_v1.0.0.pkl",
+    "warm_restart": true,
+    "warm_restart_script": "scripts/arf_warm_restart.py",
+    "replay_table": "arf_replay_buffer",
+    "note": "Pickle file kept as fallback reference only; production loads via warm restart from ClickHouse"
+  },
+  "feature_cols": "models/feature_cols.pkl",
+  "drain3_state": "drain3_state.bin"
+}
