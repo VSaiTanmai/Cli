@@ -289,8 +289,11 @@ class FeatureExtractor:
             src_bytes = float(event.get("bytes_sent", 0))
             dst_bytes = float(event.get("bytes_received", 0))
         else:
-            # For non-network events, estimate from message length
-            msg = event.get("message", event.get("description", ""))
+            # For non-network events, estimate from message length.
+            # Vector CCS outputs message_body for all types, but only
+            # raw-logs have a top-level "message" field.
+            msg = event.get("message", event.get("message_body",
+                            event.get("description", "")))
             src_bytes = float(len(str(msg))) if msg else 0.0
             dst_bytes = 0.0
 
@@ -354,7 +357,8 @@ class FeatureExtractor:
             # Determine error type from connection metadata
             error_type = "normal"
             direction = str(event.get("direction", "")).lower()
-            msg_lower = str(event.get("message", "")).lower()
+            # Vector CCS network events have message_body, not message
+            msg_lower = str(event.get("message", event.get("message_body", ""))).lower()
             if "syn" in msg_lower and ("error" in msg_lower or "timeout" in msg_lower):
                 error_type = "syn_error"
             elif "reject" in msg_lower or "refused" in msg_lower or "rst" in msg_lower:
