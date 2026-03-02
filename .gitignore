@@ -40,3 +40,15 @@ benchmark_results/
 .idea/
 
 INDUSTRY_GAP_ANALYSIS.md
+
+# Large benchmark payloads
+*.ndjson
+
+# Temp/debug files
+docker_status.txt
+docker_ver.txt
+wsl_test.txt
+
+# Vector config backups
+vector/*.backup*
+vector/*.optimized*

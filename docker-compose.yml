@@ -708,12 +708,13 @@ services:
       - "${VECTOR_SYSLOG_PORT:-1514}:1514/udp"   # Syslog UDP
       - "${VECTOR_API_PORT:-8686}:8686"           # Vector API
       - "${VECTOR_HTTP_PORT:-8687}:8687"          # HTTP JSON ingest
+      - "${VECTOR_TCP_JSON_PORT:-9514}:9514"      # TCP NDJSON ingest (high-throughput)
       - "${VECTOR_STATSD_PORT:-8125}:8125/udp"   # StatsD metrics
       - "${VECTOR_PROM_PORT:-9598}:9598"          # Prometheus exporter
     environment:
       VECTOR_KAFKA_BROKERS: redpanda01:9092,redpanda02:9092,redpanda03:9092
       VECTOR_LOG: ${VECTOR_LOG_LEVEL:-info}
-      VECTOR_THREADS: ${VECTOR_THREADS:-4}
+      VECTOR_THREADS: ${VECTOR_THREADS:-8}
     volumes:
       - vector_data:/var/lib/vector
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -734,11 +735,11 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '8'
+          memory: 8G
+        reservations:
           cpus: '4'
           memory: 4G
-        reservations:
-          cpus: '2'
-          memory: 1G
 
   # =========================================================================
   # Prometheus
@@ -989,6 +990,263 @@ services:
       - ./agents/triage/models:/models:ro
     ports:
       - "8300:8300"
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+      clickhouse01:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ── Triage Agent 2: Horizontal scaling for 200k EPS triage throughput ──
+  # Same consumer group → Redpanda distributes partitions across all agents.
+  # 48 topic-partitions (12 × 4 topics) / 4 agents = 12 partitions each.
+  clif-triage-agent-2:
+    container_name: clif-triage-agent-2
+    hostname: clif-triage-agent-2
+    build:
+      context: ./agents/triage
+      dockerfile: Dockerfile
+    environment:
+      KAFKA_BROKERS: "redpanda01:9092,redpanda02:9092,redpanda03:9092"
+      CONSUMER_GROUP_ID: "clif-triage-agent"
+      INPUT_TOPICS: "raw-logs,security-events,process-events,network-events"
+      TOPIC_TEMPLATED_LOGS: "templated-logs"
+      TOPIC_TRIAGE_SCORES: "triage-scores"
+      TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
+      TOPIC_DEAD_LETTER: "dead-letter"
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      DRAIN3_DEPTH: 4
+      DRAIN3_SIM_TH: 0.4
+      DRAIN3_MAX_CHILDREN: 100
+      DRAIN3_MAX_CLUSTERS: 1024
+      DRAIN3_CONFIG_PATH: /app/drain3.ini
+      DRAIN3_STATE_PATH: /app/drain3_state.bin
+      MODEL_DIR: /models
+      MODEL_LGBM_PATH: /models/lgbm_v1.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v1.0.0.pkl
+      MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
+      MODEL_ARF_CHECKPOINT: /models/arf_v1.0.0.pkl
+      FEATURE_COLS_PATH: /models/feature_cols.pkl
+      MANIFEST_PATH: /models/manifest.json
+      SCORE_WEIGHTS: "lgbm=0.50,eif=0.30,arf=0.20"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.70"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.90"
+      DISAGREEMENT_THRESHOLD: "0.35"
+      FEATURE_STALENESS_TIMEOUT_SEC: "300"
+      BATCH_SIZE: "1000"
+      INFERENCE_WORKERS: "4"
+      CONN_TIME_WINDOW_SEC: "2.0"
+      CONN_HOST_WINDOW_SIZE: "100"
+      ARF_WARM_RESTART: "true"
+      ARF_REPLAY_HOURS: "24"
+      ARF_REPLAY_MAX_ROWS: "50000"
+      ARF_STREAM_CSV_PATH: "/models/features_arf_stream_features.csv"
+      ARF_N_MODELS: "10"
+      ARF_ADWIN_DELTA: "0.002"
+      ARF_ADWIN_WARNING_DELTA: "0.01"
+      ARF_SEED: "42"
+      SELFTEST_ENABLED: "true"
+      STARTUP_HEALTH_RETRIES: "30"
+      STARTUP_HEALTH_DELAY_SEC: "2.0"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./agents/triage/models:/models:ro
+    ports:
+      - "8301:8300"
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+      clickhouse01:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ── Triage Agent 3 ──
+  clif-triage-agent-3:
+    container_name: clif-triage-agent-3
+    hostname: clif-triage-agent-3
+    build:
+      context: ./agents/triage
+      dockerfile: Dockerfile
+    environment:
+      KAFKA_BROKERS: "redpanda01:9092,redpanda02:9092,redpanda03:9092"
+      CONSUMER_GROUP_ID: "clif-triage-agent"
+      INPUT_TOPICS: "raw-logs,security-events,process-events,network-events"
+      TOPIC_TEMPLATED_LOGS: "templated-logs"
+      TOPIC_TRIAGE_SCORES: "triage-scores"
+      TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
+      TOPIC_DEAD_LETTER: "dead-letter"
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      DRAIN3_DEPTH: 4
+      DRAIN3_SIM_TH: 0.4
+      DRAIN3_MAX_CHILDREN: 100
+      DRAIN3_MAX_CLUSTERS: 1024
+      DRAIN3_CONFIG_PATH: /app/drain3.ini
+      DRAIN3_STATE_PATH: /app/drain3_state.bin
+      MODEL_DIR: /models
+      MODEL_LGBM_PATH: /models/lgbm_v1.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v1.0.0.pkl
+      MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
+      MODEL_ARF_CHECKPOINT: /models/arf_v1.0.0.pkl
+      FEATURE_COLS_PATH: /models/feature_cols.pkl
+      MANIFEST_PATH: /models/manifest.json
+      SCORE_WEIGHTS: "lgbm=0.50,eif=0.30,arf=0.20"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.70"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.90"
+      DISAGREEMENT_THRESHOLD: "0.35"
+      FEATURE_STALENESS_TIMEOUT_SEC: "300"
+      BATCH_SIZE: "1000"
+      INFERENCE_WORKERS: "4"
+      CONN_TIME_WINDOW_SEC: "2.0"
+      CONN_HOST_WINDOW_SIZE: "100"
+      ARF_WARM_RESTART: "true"
+      ARF_REPLAY_HOURS: "24"
+      ARF_REPLAY_MAX_ROWS: "50000"
+      ARF_STREAM_CSV_PATH: "/models/features_arf_stream_features.csv"
+      ARF_N_MODELS: "10"
+      ARF_ADWIN_DELTA: "0.002"
+      ARF_ADWIN_WARNING_DELTA: "0.01"
+      ARF_SEED: "42"
+      SELFTEST_ENABLED: "true"
+      STARTUP_HEALTH_RETRIES: "30"
+      STARTUP_HEALTH_DELAY_SEC: "2.0"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./agents/triage/models:/models:ro
+    ports:
+      - "8302:8300"
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+      clickhouse01:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ── Triage Agent 4 ──
+  clif-triage-agent-4:
+    container_name: clif-triage-agent-4
+    hostname: clif-triage-agent-4
+    build:
+      context: ./agents/triage
+      dockerfile: Dockerfile
+    environment:
+      KAFKA_BROKERS: "redpanda01:9092,redpanda02:9092,redpanda03:9092"
+      CONSUMER_GROUP_ID: "clif-triage-agent"
+      INPUT_TOPICS: "raw-logs,security-events,process-events,network-events"
+      TOPIC_TEMPLATED_LOGS: "templated-logs"
+      TOPIC_TRIAGE_SCORES: "triage-scores"
+      TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
+      TOPIC_DEAD_LETTER: "dead-letter"
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      DRAIN3_DEPTH: 4
+      DRAIN3_SIM_TH: 0.4
+      DRAIN3_MAX_CHILDREN: 100
+      DRAIN3_MAX_CLUSTERS: 1024
+      DRAIN3_CONFIG_PATH: /app/drain3.ini
+      DRAIN3_STATE_PATH: /app/drain3_state.bin
+      MODEL_DIR: /models
+      MODEL_LGBM_PATH: /models/lgbm_v1.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v1.0.0.pkl
+      MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
+      MODEL_ARF_CHECKPOINT: /models/arf_v1.0.0.pkl
+      FEATURE_COLS_PATH: /models/feature_cols.pkl
+      MANIFEST_PATH: /models/manifest.json
+      SCORE_WEIGHTS: "lgbm=0.50,eif=0.30,arf=0.20"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.70"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.90"
+      DISAGREEMENT_THRESHOLD: "0.35"
+      FEATURE_STALENESS_TIMEOUT_SEC: "300"
+      BATCH_SIZE: "1000"
+      INFERENCE_WORKERS: "4"
+      CONN_TIME_WINDOW_SEC: "2.0"
+      CONN_HOST_WINDOW_SIZE: "100"
+      ARF_WARM_RESTART: "true"
+      ARF_REPLAY_HOURS: "24"
+      ARF_REPLAY_MAX_ROWS: "50000"
+      ARF_STREAM_CSV_PATH: "/models/features_arf_stream_features.csv"
+      ARF_N_MODELS: "10"
+      ARF_ADWIN_DELTA: "0.002"
+      ARF_ADWIN_WARNING_DELTA: "0.01"
+      ARF_SEED: "42"
+      SELFTEST_ENABLED: "true"
+      STARTUP_HEALTH_RETRIES: "30"
+      STARTUP_HEALTH_DELAY_SEC: "2.0"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./agents/triage/models:/models:ro
+    ports:
+      - "8303:8300"
     depends_on:
       redpanda01:
         condition: service_healthy
