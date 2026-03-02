@@ -261,7 +261,7 @@ services:
         done
 
         echo "── Creating agent pipeline topics ($$AGENT_P partitions) ──"
-        for TOPIC in hunter-tasks hunter-investigations verifier-tasks verifier-results; do
+        for TOPIC in hunter-tasks hunter-results verifier-tasks verifier-results; do
           rpk topic create "$$TOPIC" \
             --brokers "$$BROKER" \
             --partitions "$$AGENT_P" \
