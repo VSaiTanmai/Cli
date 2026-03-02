@@ -1,10 +1,29 @@
 # =============================================================================
-# CLIF — PC1 Data Tier (Cluster Mode — Dedicated 16 GB PC)
+# CLIF — PC1 Data & Message Tier (Right-Sized for 6C/12T, 16 GB)
 # =============================================================================
-# Runs: Redpanda ×3, ClickHouse ×2 + Keeper, MinIO ×3, Consumer ×3
-# Memory budget: ~5 GB actual / 16 GB available → full headroom, zero compromise
+# Runs: Redpanda ×3, ClickHouse ×2 + Keeper, MinIO ×3, Consumer ×2
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  Resource Budget                                                       │
+# │  CPUs:  11.75 / 12 logical cores                                      │
+# │  RAM:   14.6G limits / 6.6G reservations (16 GB available)            │
+# │                                                                        │
+# │  KEY WIN: The entire consumer drain loop (Redpanda read → transform   │
+# │  → ClickHouse INSERT) runs with ZERO cross-machine network hops.      │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
 # Usage:
-#   docker compose -f docker-compose.pc1.yml --env-file .env --env-file cluster/.env up -d
+#   # First run setup:
+#   .\cluster\setup.ps1 -Role pc1
+#
+#   # Start:
+#   docker compose -f docker-compose.pc1.yml --env-file .env --env-file cluster\.env up -d
+#
+#   # Status:
+#   docker compose -f docker-compose.pc1.yml ps
+#
+#   # Stop:
+#   docker compose -f docker-compose.pc1.yml down
 # =============================================================================
 # IMPORTANT: Set DATA_IP in cluster/.env to this machine's LAN IP first!
 # =============================================================================
@@ -35,7 +54,7 @@ volumes:
 services:
 
   # =========================================================================
-  # ClickHouse Keeper
+  # ClickHouse Keeper (lightweight ZooKeeper replacement for replication)
   # =========================================================================
   clickhouse-keeper:
     image: clickhouse/clickhouse-keeper:24.8
@@ -54,18 +73,19 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 1G
-        reservations:
           cpus: '0.5'
           memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   # =========================================================================
-  # ClickHouse Node 1
+  # ClickHouse Node 1 (shard_01 / replica_01) — Primary writes
   # =========================================================================
   clickhouse01:
     image: clickhouse/clickhouse-server:24.8
@@ -74,7 +94,7 @@ services:
     ports:
       - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
       - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
-      - "9363:9363"          # Prometheus metrics (cluster)
+      - "9363:9363"          # Prometheus metrics (scraped by PC2)
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
@@ -102,6 +122,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     ulimits:
       nofile:
@@ -110,14 +131,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 6G
-        reservations:
           cpus: '2'
           memory: 3G
+        reservations:
+          cpus: '1'
+          memory: 1536M
 
   # =========================================================================
-  # ClickHouse Node 2
+  # ClickHouse Node 2 (shard_01 / replica_02) — Async replica
   # =========================================================================
   clickhouse02:
     image: clickhouse/clickhouse-server:24.8
@@ -126,7 +147,7 @@ services:
     ports:
       - "8124:8123"
       - "9001:9000"
-      - "9364:9363"          # Prometheus metrics (cluster)
+      - "9364:9363"          # Prometheus metrics (scraped by PC2)
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
@@ -154,6 +175,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     ulimits:
       nofile:
@@ -162,14 +184,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 6G
+          cpus: '1'
+          memory: 2G
         reservations:
-          cpus: '2'
-          memory: 3G
+          cpus: '0.5'
+          memory: 1G
 
   # =========================================================================
-  # Redpanda Broker 1
+  # Redpanda Broker 1 (seed node)
   # =========================================================================
   redpanda01:
     image: redpandadata/redpanda:v24.2.8
@@ -185,14 +207,14 @@ services:
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
       - --advertise-pandaproxy-addr internal://redpanda01:8082,external://${DATA_IP:-localhost}:18082
       - --smp ${REDPANDA_SMP:-1}
-      - --memory ${REDPANDA_MEMORY:-2G}
+      - --memory ${REDPANDA_MEMORY:-1500M}
       - --reserve-memory 200M
       - --default-log-level=warn
       - --seeds redpanda01:33145
     ports:
-      - "19092:19092"
-      - "18082:18082"
-      - "${REDPANDA_ADMIN_PORT:-9644}:9644"
+      - "19092:19092"                          # Kafka external (PC2 connects here)
+      - "18082:18082"                          # Pandaproxy external
+      - "${REDPANDA_ADMIN_PORT:-9644}:9644"    # Admin API / metrics
     volumes:
       - redpanda01_data:/var/lib/redpanda/data
     networks:
@@ -204,15 +226,16 @@ services:
       timeout: 10s
       retries: 30
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: ${REDPANDA_MEM_LIMIT:-3G}
+          cpus: '1.5'
+          memory: ${REDPANDA_MEM_LIMIT:-2G}
         reservations:
-          cpus: '1'
-          memory: ${REDPANDA_MEMORY:-2G}
+          cpus: '0.75'
+          memory: ${REDPANDA_MEMORY:-1500M}
 
   # =========================================================================
   # Redpanda Broker 2
@@ -231,14 +254,14 @@ services:
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
       - --advertise-pandaproxy-addr internal://redpanda02:8082,external://${DATA_IP:-localhost}:28082
       - --smp ${REDPANDA_SMP:-1}
-      - --memory ${REDPANDA_MEMORY:-2G}
+      - --memory ${REDPANDA_MEMORY:-1500M}
       - --reserve-memory 200M
       - --default-log-level=warn
       - --seeds redpanda01:33145
     ports:
       - "29092:29092"
       - "28082:28082"
-      - "9645:9644"           # Admin API (cluster — unique port)
+      - "9645:9644"           # Admin API (unique host port)
     volumes:
       - redpanda02_data:/var/lib/redpanda/data
     networks:
@@ -253,15 +276,16 @@ services:
       timeout: 10s
       retries: 30
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: ${REDPANDA_MEM_LIMIT:-3G}
+          cpus: '1.5'
+          memory: ${REDPANDA_MEM_LIMIT:-2G}
         reservations:
-          cpus: '1'
-          memory: ${REDPANDA_MEMORY:-2G}
+          cpus: '0.75'
+          memory: ${REDPANDA_MEMORY:-1500M}
 
   # =========================================================================
   # Redpanda Broker 3
@@ -280,14 +304,14 @@ services:
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:38082
       - --advertise-pandaproxy-addr internal://redpanda03:8082,external://${DATA_IP:-localhost}:38082
       - --smp ${REDPANDA_SMP:-1}
-      - --memory ${REDPANDA_MEMORY:-2G}
+      - --memory ${REDPANDA_MEMORY:-1500M}
       - --reserve-memory 200M
       - --default-log-level=warn
       - --seeds redpanda01:33145
     ports:
       - "39092:39092"
       - "38082:38082"
-      - "9646:9644"           # Admin API (cluster — unique port)
+      - "9646:9644"           # Admin API (unique host port)
     volumes:
       - redpanda03_data:/var/lib/redpanda/data
     networks:
@@ -302,18 +326,19 @@ services:
       timeout: 10s
       retries: 30
       start_period: 30s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: ${REDPANDA_MEM_LIMIT:-3G}
+          cpus: '1.5'
+          memory: ${REDPANDA_MEM_LIMIT:-2G}
         reservations:
-          cpus: '1'
-          memory: ${REDPANDA_MEMORY:-2G}
+          cpus: '0.75'
+          memory: ${REDPANDA_MEMORY:-1500M}
 
   # =========================================================================
-  # MinIO Node 1
+  # MinIO Node 1 (S3-compatible cold storage for ClickHouse)
   # =========================================================================
   minio1:
     image: minio/minio:RELEASE.2024-08-29T01-40-52Z
@@ -336,15 +361,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # =========================================================================
   # MinIO Node 2
@@ -367,15 +393,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # =========================================================================
   # MinIO Node 3
@@ -398,18 +425,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # =========================================================================
-  # MinIO bucket initialiser
+  # MinIO bucket initialiser (creates buckets then exits)
   # =========================================================================
   minio-init:
     image: minio/mc:RELEASE.2024-08-26T10-49-58Z
@@ -432,7 +460,7 @@ services:
       - clif-storage
 
   # =========================================================================
-  # Redpanda topic initialiser
+  # Redpanda topic initialiser (creates all 14 topics then exits)
   # =========================================================================
   redpanda-init:
     image: redpandadata/redpanda:v24.2.8
@@ -452,7 +480,7 @@ services:
         AGENT_P=$$(( PARTITIONS / 2 ))
         [ "$$AGENT_P" -lt 3 ] && AGENT_P=3
 
-        echo "── Creating ingestion topics ($$PARTITIONS partitions) ──"
+        echo "── Creating ingestion topics ($$PARTITIONS partitions, RF=$$RF) ──"
         for TOPIC in raw-logs security-events process-events network-events; do
           rpk topic create "$$TOPIC" \
             --brokers "$$BROKER" \
@@ -514,7 +542,8 @@ services:
       - clif-backend
 
   # =========================================================================
-  # Consumer 1
+  # Consumer 1 (Redpanda → ClickHouse pipeline)
+  # ── LOCAL to both Redpanda and ClickHouse: zero network hops ──
   # =========================================================================
   clif-consumer:
     build:
@@ -531,17 +560,19 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
         condition: service_healthy
       redpanda01:
         condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
     networks:
       - clif-backend
       - clif-storage
@@ -556,14 +587,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 1.5G
+          cpus: '1.5'
+          memory: 768M
         reservations:
-          cpus: '1'
-          memory: 512M
+          cpus: '0.5'
+          memory: 256M
 
   # =========================================================================
-  # Consumer 2
+  # Consumer 2 (horizontal scaling — same consumer group)
+  # 12 partitions / 2 consumers = 6 partitions each (optimal)
   # =========================================================================
   clif-consumer-2:
     build:
@@ -580,17 +612,19 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
       CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
+      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-200000}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
+      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-10000}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
         condition: service_healthy
       redpanda01:
         condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
     networks:
       - clif-backend
       - clif-storage
@@ -605,57 +639,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 1.5G
+          cpus: '1.5'
+          memory: 768M
         reservations:
-          cpus: '1'
-          memory: 512M
-
-  # =========================================================================
-  # Consumer 3
-  # =========================================================================
-  clif-consumer-3:
-    build:
-      context: ./consumer
-      dockerfile: Dockerfile
-    container_name: clif-consumer-3
-    hostname: clif-consumer-3
-    environment:
-      KAFKA_BROKERS: redpanda01:9092,redpanda02:9092,redpanda03:9092
-      CLICKHOUSE_HOST: clickhouse01
-      CLICKHOUSE_ALT_HOSTS: clickhouse02:9000
-      CLICKHOUSE_PORT: 9000
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
-      CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
-      CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
-      CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
-      CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
-      LOG_LEVEL: INFO
-    depends_on:
-      clickhouse01:
-        condition: service_healthy
-      redpanda01:
-        condition: service_healthy
-    networks:
-      - clif-backend
-      - clif-storage
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.settimeout(2); s.connect((\"clickhouse01\",9000)); s.close()' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    logging: *default-logging
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1.5G
-        reservations:
-          cpus: '1'
-          memory: 512M
+          cpus: '0.5'
+          memory: 256M

@@ -1,21 +1,29 @@
 # =============================================================================
-# CLIF Vector Pipeline v2 — High-Performance Direct-to-ClickHouse
+# CLIF Vector Pipeline v2 — Full Production Path (Vector → Redpanda → CH)
 # =============================================================================
 #
-# Architecture: Sources → mega_transform → route_by_type → ClickHouse sinks
-#               + Kafka AI pipeline feed for security events
+# Architecture: Sources → mega_transform → route_by_type → Kafka sinks
+#               Consumer reads from Redpanda → batch inserts to ClickHouse
 #
 # Performance optimizations over v1:
 #   1. Single mega-transform (2 hops total, was 6) — saves ~12µs/event
 #   2. Pre-classification fast path — skips regex for pre-labeled events
 #   3. 512-byte prefix regex scan — faster security classification
 #   4. No dedup in Vector — push to ClickHouse FINAL if needed
-#   5. Direct ClickHouse sinks — bypasses Kafka + Python consumers
-#   6. Kafka retained ONLY for AI pipeline feed (security events)
+#   5. All 4 event types route through Redpanda (production path)
+#   6. Consumer batch-inserts to ClickHouse (native TCP, columnar)
 #   7. event_id generated in VRL (UUID v4) for CH ↔ AI linkage
 #
+# Fault-tolerance guarantees:
+#   • acks=-1 (all in-sync replicas must confirm writes)
+#   • enable.idempotence=true (exactly-once Kafka producer semantics)
+#   • when_full=block (backpressure, never silently drop events)
+#   • 10 retries with exponential backoff (200ms → 10s cap)
+#   • Consumer: manual offset commit only after successful CH flush
+#   • Consumer: 5 retries on CH insert with reconnect + DLQ fallback
+#
 # Transform chain (2 hops):
-#   Sources → mega_transform → route_by_type → sinks
+#   Sources → mega_transform → route_by_type → Kafka sinks
 #
 # =============================================================================
 
@@ -743,148 +751,37 @@ transforms:
 
 sinks:
 
-  # ── Raw Logs → ClickHouse Direct ────────────────────────────────────────
+  # ── Raw Logs → Redpanda (production path) ───────────────────────────────
   sink_raw_logs:
-    type: clickhouse
+    type: kafka
     inputs:
       - "route_by_type.raw"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
-    database: "${CLICKHOUSE_DB:-clif_logs}"
-    table: "raw_logs"
-    auth:
-      strategy: basic
-      user: "${CLICKHOUSE_USER:-clif_admin}"
-      password: "${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}"
+    bootstrap_servers: "${VECTOR_KAFKA_BROKERS:-redpanda01:9092}"
+    topic: "raw-logs"
     encoding:
-      timestamp_format: "rfc3339"
+      codec: json
+    compression: lz4
     batch:
+      max_bytes: 10485760
       max_events: 50000
-      max_bytes: 16777216
-      timeout_secs: 1
+      timeout_secs: 0.1
     buffer:
       type: memory
       max_events: 100000
-      when_full: drop_newest
-    compression: none
-    request:
-      concurrency: 10
-      timeout_secs: 60
-      rate_limit_num: 9999
-      rate_limit_duration_secs: 1
-      retry_initial_backoff_secs: 1
-      retry_max_duration_secs: 30
-    healthcheck:
-      enabled: false
-    acknowledgements: false
+      when_full: block
+    librdkafka_options:
+      "queue.buffering.max.messages": "1000000"
+      "queue.buffering.max.kbytes": "1048576"
+      "message.send.max.retries": "10"
+      "retry.backoff.ms": "200"
+      "retry.backoff.max.ms": "10000"
+      "request.required.acks": "-1"
+      "enable.idempotence": "true"
+      "linger.ms": "100"
+      "compression.type": "lz4"
 
-  # ── Security Events → ClickHouse Direct ─────────────────────────────────
+  # ── Security Events → Redpanda (production path) ───────────────────────
   sink_security_events:
-    type: clickhouse
-    inputs:
-      - "route_by_type.security"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
-    database: "${CLICKHOUSE_DB:-clif_logs}"
-    table: "security_events"
-    auth:
-      strategy: basic
-      user: "${CLICKHOUSE_USER:-clif_admin}"
-      password: "${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}"
-    encoding:
-      timestamp_format: "rfc3339"
-    batch:
-      max_events: 50000
-      max_bytes: 16777216
-      timeout_secs: 1
-    buffer:
-      type: memory
-      max_events: 100000
-      when_full: drop_newest
-    compression: none
-    request:
-      concurrency: 10
-      timeout_secs: 60
-      rate_limit_num: 9999
-      rate_limit_duration_secs: 1
-      retry_initial_backoff_secs: 1
-      retry_max_duration_secs: 30
-    healthcheck:
-      enabled: false
-    acknowledgements: false
-
-  # ── Process Events → ClickHouse Direct ──────────────────────────────────
-  sink_process_events:
-    type: clickhouse
-    inputs:
-      - "route_by_type.process"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
-    database: "${CLICKHOUSE_DB:-clif_logs}"
-    table: "process_events"
-    auth:
-      strategy: basic
-      user: "${CLICKHOUSE_USER:-clif_admin}"
-      password: "${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}"
-    encoding:
-      timestamp_format: "rfc3339"
-    batch:
-      max_events: 50000
-      max_bytes: 16777216
-      timeout_secs: 1
-    buffer:
-      type: memory
-      max_events: 100000
-      when_full: drop_newest
-    compression: none
-    request:
-      concurrency: 10
-      timeout_secs: 60
-      rate_limit_num: 9999
-      rate_limit_duration_secs: 1
-      retry_initial_backoff_secs: 1
-      retry_max_duration_secs: 30
-    healthcheck:
-      enabled: false
-    acknowledgements: false
-
-  # ── Network Events → ClickHouse Direct ──────────────────────────────────
-  sink_network_events:
-    type: clickhouse
-    inputs:
-      - "route_by_type.network"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
-    database: "${CLICKHOUSE_DB:-clif_logs}"
-    table: "network_events"
-    auth:
-      strategy: basic
-      user: "${CLICKHOUSE_USER:-clif_admin}"
-      password: "${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}"
-    encoding:
-      timestamp_format: "rfc3339"
-    batch:
-      max_events: 50000
-      max_bytes: 16777216
-      timeout_secs: 1
-    buffer:
-      type: memory
-      max_events: 100000
-      when_full: drop_newest
-    compression: none
-    request:
-      concurrency: 10
-      timeout_secs: 60
-      rate_limit_num: 9999
-      rate_limit_duration_secs: 1
-      retry_initial_backoff_secs: 1
-      retry_max_duration_secs: 30
-    healthcheck:
-      enabled: false
-    acknowledgements: false
-
-  # ── Security Events → Kafka (AI Pipeline Feed) ─────────────────────────
-  # Security events are DUAL-WRITTEN: directly to ClickHouse (above) and
-  # to Kafka for the AI triage pipeline. The triage agent consumes from
-  # this topic, scores events, and produces to triage-scores topic.
-  # The event_id (UUID v4) is identical in both destinations for linkage.
-  sink_security_ai:
     type: kafka
     inputs:
       - "route_by_type.security"
@@ -901,13 +798,73 @@ sinks:
     buffer:
       type: memory
       max_events: 100000
-      when_full: drop_newest
+      when_full: block
     librdkafka_options:
       "queue.buffering.max.messages": "1000000"
       "queue.buffering.max.kbytes": "1048576"
-      "message.send.max.retries": "3"
-      "retry.backoff.ms": "100"
-      "request.required.acks": "1"
+      "message.send.max.retries": "10"
+      "retry.backoff.ms": "200"
+      "retry.backoff.max.ms": "10000"
+      "request.required.acks": "-1"
+      "enable.idempotence": "true"
+      "linger.ms": "100"
+      "compression.type": "lz4"
+
+  # ── Process Events → Redpanda (production path) ────────────────────────
+  sink_process_events:
+    type: kafka
+    inputs:
+      - "route_by_type.process"
+    bootstrap_servers: "${VECTOR_KAFKA_BROKERS:-redpanda01:9092}"
+    topic: "process-events"
+    encoding:
+      codec: json
+    compression: lz4
+    batch:
+      max_bytes: 10485760
+      max_events: 50000
+      timeout_secs: 0.1
+    buffer:
+      type: memory
+      max_events: 100000
+      when_full: block
+    librdkafka_options:
+      "queue.buffering.max.messages": "1000000"
+      "queue.buffering.max.kbytes": "1048576"
+      "message.send.max.retries": "10"
+      "retry.backoff.ms": "200"
+      "retry.backoff.max.ms": "10000"
+      "request.required.acks": "-1"
+      "enable.idempotence": "true"
+      "linger.ms": "100"
+      "compression.type": "lz4"
+
+  # ── Network Events → Redpanda (production path) ────────────────────────
+  sink_network_events:
+    type: kafka
+    inputs:
+      - "route_by_type.network"
+    bootstrap_servers: "${VECTOR_KAFKA_BROKERS:-redpanda01:9092}"
+    topic: "network-events"
+    encoding:
+      codec: json
+    compression: lz4
+    batch:
+      max_bytes: 10485760
+      max_events: 50000
+      timeout_secs: 0.1
+    buffer:
+      type: memory
+      max_events: 100000
+      when_full: block
+    librdkafka_options:
+      "queue.buffering.max.messages": "1000000"
+      "queue.buffering.max.kbytes": "1048576"
+      "message.send.max.retries": "10"
+      "retry.backoff.ms": "200"
+      "retry.backoff.max.ms": "10000"
+      "request.required.acks": "-1"
+      "enable.idempotence": "true"
       "linger.ms": "100"
       "compression.type": "lz4"
 

@@ -1,14 +1,37 @@
 # =============================================================================
-# CLIF — PC2 AI Compute & Presentation Tier (Cluster Mode — Dedicated 16 GB PC)
+# CLIF — PC2 Compute & Presentation Tier (Right-Sized for 6C/12T, 16 GB)
 # =============================================================================
-# Runs: Vector, Agents ×3, AI Classifier, LanceDB, Merkle, Redpanda Console,
+# Runs: Vector, Triage Agent ×2, LanceDB, Merkle, Redpanda Console,
 #       Prometheus, Grafana
-# Memory budget: ~5-6 GB containers (stubs) / ~8-10 GB (real agents)
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  Resource Budget                                                       │
+# │  CPUs:  11.5 / 12 logical cores                                       │
+# │  RAM:   10.3G limits / 4.3G reservations (16 GB available)            │
+# │  Headroom: ~5.7 GB free for OS + Docker daemon                        │
+# │                                                                        │
+# │  DATA FLOW: Logs → Vector → [LAN] → PC1 Redpanda                     │
+# │             Only 1 LAN hop on the ingestion hot path.                  │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
 # Usage:
-#   docker compose -f docker-compose.pc2.yml --env-file .env --env-file cluster/.env up -d
+#   # First run setup (use PC1's LAN IP):
+#   .\cluster\setup.ps1 -Role pc2 -DataIP 192.168.1.100
+#
+#   # Start (core services):
+#   docker compose -f docker-compose.pc2.yml --env-file .env --env-file cluster\.env up -d
+#
+#   # Start (with LanceDB semantic search):
+#   docker compose -f docker-compose.pc2.yml --env-file .env --env-file cluster\.env --profile full up -d
+#
+#   # Status:
+#   docker compose -f docker-compose.pc2.yml ps
+#
+#   # Stop:
+#   docker compose -f docker-compose.pc2.yml down
 # =============================================================================
 # IMPORTANT: Set DATA_IP in cluster/.env to PC1's LAN IP first!
-# Also run: cd dashboard && npm run dev   (Next.js dashboard is not Dockerized)
+# Also run:  cd dashboard && npm run dev   (Next.js dashboard is not Dockerized)
 # =============================================================================
 
 x-logging: &default-logging
@@ -17,9 +40,9 @@ x-logging: &default-logging
     max-size: "50m"
     max-file: "5"
 
-# ── PC1 host-alias anchor (reused by all services needing data-tier) ────────
-# Resolves clickhouse01 / minio1 hostnames to PC1's LAN IP inside containers.
-# This lets healthchecks and configs that use Docker hostnames work unchanged.
+# ── PC1 host-alias anchor (reused by all services needing data tier) ────────
+# Resolves ClickHouse / MinIO Docker hostnames to PC1's LAN IP inside containers
+# so configs/healthchecks that use container hostnames work unchanged.
 x-pc1-hosts: &pc1-hosts
   extra_hosts:
     - "clickhouse01:${DATA_IP}"
@@ -44,6 +67,13 @@ services:
   # =========================================================================
   # Vector — Log Aggregation & CCS Normalization Pipeline
   # =========================================================================
+  # Collects logs from syslog, HTTP, TCP NDJSON, Docker, files, journald.
+  # Normalizes all events to CLIF Common Schema (CCS) via VRL transforms.
+  # Routes classified events to Redpanda on PC1 via external Kafka listener.
+  #
+  # Fault-tolerant producer: acks=all, enable.idempotence=true,
+  # when_full=block, 10 retries with exponential backoff.
+  # =========================================================================
   clif-vector:
     build:
       context: ./vector
@@ -53,17 +83,18 @@ services:
     hostname: clif-vector
     <<: *pc1-hosts
     ports:
-      - "${VECTOR_SYSLOG_PORT:-1514}:1514"
-      - "${VECTOR_SYSLOG_PORT:-1514}:1514/udp"
-      - "${VECTOR_API_PORT:-8686}:8686"
-      - "${VECTOR_HTTP_PORT:-8687}:8687"
-      - "${VECTOR_STATSD_PORT:-8125}:8125/udp"
-      - "${VECTOR_PROM_PORT:-9598}:9598"
+      - "${VECTOR_SYSLOG_PORT:-1514}:1514"       # Syslog TCP+UDP
+      - "${VECTOR_SYSLOG_PORT:-1514}:1514/udp"   # Syslog UDP
+      - "${VECTOR_API_PORT:-8686}:8686"           # Vector API
+      - "${VECTOR_HTTP_PORT:-8687}:8687"          # HTTP JSON ingest
+      - "9514:9514"                                # TCP NDJSON (high-throughput)
+      - "${VECTOR_STATSD_PORT:-8125}:8125/udp"   # StatsD metrics
+      - "${VECTOR_PROM_PORT:-9598}:9598"          # Prometheus exporter
     environment:
       # ── Kafka brokers via PC1 external listeners ──
       VECTOR_KAFKA_BROKERS: "${DATA_IP}:19092,${DATA_IP}:29092,${DATA_IP}:39092"
       VECTOR_LOG: ${VECTOR_LOG_LEVEL:-info}
-      VECTOR_THREADS: ${VECTOR_THREADS:-4}
+      VECTOR_THREADS: ${VECTOR_THREADS:-5}
     volumes:
       - vector_data:/var/lib/vector
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -76,18 +107,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 4G
+          cpus: '5'
+          memory: 3G
         reservations:
           cpus: '2'
-          memory: 1G
+          memory: 1536M
 
   # =========================================================================
-  # Redpanda Console (web UI)
+  # Redpanda Console (web UI — connects to PC1 brokers)
   # =========================================================================
   redpanda-console:
     image: redpandadata/console:v2.7.2
@@ -114,6 +146,11 @@ services:
       start_period: 20s
     logging: *default-logging
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
 
   # =========================================================================
   # Merkle Evidence Chain Service
@@ -151,15 +188,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '0.5'
+          memory: 256M
         reservations:
-          cpus: '0.25'
+          cpus: '0.1'
           memory: 128M
 
   # =========================================================================
   # LanceDB — Semantic Vector Search & RAG Engine
-  # Disabled during pipeline testing. Enable with: docker compose --profile full up
+  # Enabled with: --profile full
   # =========================================================================
   lancedb:
     container_name: clif-lancedb
@@ -202,17 +239,112 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 4G
+          cpus: '1'
+          memory: 2G
         reservations:
           cpus: '0.5'
-          memory: 1.5G
+          memory: 768M
 
   # =========================================================================
-  # Triage Agent — Drain3 Template Mining + ML Scoring
+  # Triage Agent 1 — 3-Model ML Ensemble (LightGBM ONNX + EIF + River ARF)
+  # =========================================================================
+  # Consumes: raw-logs, security-events, process-events, network-events (PC1)
+  # Produces: triage-scores, anomaly-alerts (PC1)
+  # Writes:   ClickHouse arf_replay_buffer (PC1)
   # =========================================================================
   clif-triage-agent:
     container_name: clif-triage-agent
+    build:
+      context: ./agents/triage
+      dockerfile: Dockerfile
+    <<: *pc1-hosts
+    environment:
+      # ── Redpanda connectivity (PC1 external listeners) ──
+      KAFKA_BROKERS: "${DATA_IP}:19092,${DATA_IP}:29092,${DATA_IP}:39092"
+      CONSUMER_GROUP_ID: "clif-triage-agent"
+      # ── Input topics ──
+      INPUT_TOPICS: "raw-logs,security-events,process-events,network-events"
+      # ── Output topics ──
+      TOPIC_TEMPLATED_LOGS: "templated-logs"
+      TOPIC_TRIAGE_SCORES: "triage-scores"
+      TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
+      TOPIC_DEAD_LETTER: "dead-letter"
+      # ── ClickHouse (PC1 via extra_hosts) ──
+      CLICKHOUSE_HOST: ${DATA_IP}
+      CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      # ── Drain3 configuration ──
+      DRAIN3_DEPTH: 4
+      DRAIN3_SIM_TH: 0.4
+      DRAIN3_MAX_CHILDREN: 100
+      DRAIN3_MAX_CLUSTERS: 1024
+      DRAIN3_CONFIG_PATH: /app/drain3.ini
+      DRAIN3_STATE_PATH: /app/drain3_state.bin
+      # ── ML model paths ──
+      MODEL_DIR: /models
+      MODEL_LGBM_PATH: /models/lgbm_v1.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v1.0.0.pkl
+      MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
+      MODEL_ARF_CHECKPOINT: /models/arf_v1.0.0.pkl
+      FEATURE_COLS_PATH: /models/feature_cols.pkl
+      MANIFEST_PATH: /models/manifest.json
+      # ── Scoring ──
+      SCORE_WEIGHTS: "lgbm=0.50,eif=0.30,arf=0.20"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.70"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.90"
+      DISAGREEMENT_THRESHOLD: "0.35"
+      FEATURE_STALENESS_TIMEOUT_SEC: "300"
+      # ── Performance (right-sized for 2 CPU) ──
+      BATCH_SIZE: "500"
+      INFERENCE_WORKERS: "2"
+      CONN_TIME_WINDOW_SEC: "2.0"
+      CONN_HOST_WINDOW_SIZE: "100"
+      # ── ARF Warm Restart ──
+      ARF_WARM_RESTART: "true"
+      ARF_REPLAY_HOURS: "24"
+      ARF_REPLAY_MAX_ROWS: "50000"
+      ARF_STREAM_CSV_PATH: "/models/features_arf_stream_features.csv"
+      ARF_N_MODELS: "10"
+      ARF_ADWIN_DELTA: "0.002"
+      ARF_ADWIN_WARNING_DELTA: "0.01"
+      ARF_SEED: "42"
+      # ── Health / Self-test ──
+      SELFTEST_ENABLED: "true"
+      STARTUP_HEALTH_RETRIES: "30"
+      STARTUP_HEALTH_DELAY_SEC: "2.0"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./agents/triage/models:/models:ro
+    ports:
+      - "8300:8300"
+    networks:
+      - clif-backend
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8300/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 768M
+
+  # =========================================================================
+  # Triage Agent 2 — Horizontal scaling (same consumer group)
+  # 48 topic-partitions / 2 agents = 24 partitions each
+  # =========================================================================
+  clif-triage-agent-2:
+    container_name: clif-triage-agent-2
+    hostname: clif-triage-agent-2
     build:
       context: ./agents/triage
       dockerfile: Dockerfile
@@ -248,12 +380,10 @@ services:
       DEFAULT_ANOMALOUS_THRESHOLD: "0.90"
       DISAGREEMENT_THRESHOLD: "0.35"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
-      BATCH_SIZE: "1000"
-      INFERENCE_WORKERS: "4"
+      BATCH_SIZE: "500"
+      INFERENCE_WORKERS: "2"
       CONN_TIME_WINDOW_SEC: "2.0"
       CONN_HOST_WINDOW_SIZE: "100"
-      # ARF Warm Restart — CRITICAL: pickle.load returns constant probabilities
-      # Fresh model replays from ClickHouse arf_replay_buffer to rebuild trees
       ARF_WARM_RESTART: "true"
       ARF_REPLAY_HOURS: "24"
       ARF_REPLAY_MAX_ROWS: "50000"
@@ -268,6 +398,8 @@ services:
       LOG_LEVEL: INFO
     volumes:
       - ./agents/triage/models:/models:ro
+    ports:
+      - "8301:8300"
     networks:
       - clif-backend
     healthcheck:
@@ -281,14 +413,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 4G
+          cpus: '2'
+          memory: 2G
         reservations:
-          cpus: '1'
-          memory: 1G
+          cpus: '0.5'
+          memory: 768M
 
   # =========================================================================
-  # Prometheus  (always-on — scrapes both PC1 data tier & PC2 compute tier)
+  # Prometheus (scrapes both PC1 data tier & PC2 compute tier)
   # =========================================================================
   prometheus:
     image: prom/prometheus:v2.54.0
@@ -321,18 +453,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus: '0.1'
           memory: 256M
 
   # =========================================================================
-  # Grafana  (always-on — view dashboards from demo PC)
+  # Grafana (dashboards — view from any browser on LAN)
   # =========================================================================
   grafana:
     image: grafana/grafana:11.1.4
@@ -361,12 +494,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    logging: *default-logging
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
           cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
           memory: 128M

@@ -1,15 +1,15 @@
 # =============================================================================
-# CLIF Pipeline v2 — High-Performance Direct-to-ClickHouse Architecture
+# CLIF Pipeline v2 — Full Production Path (Vector → Redpanda → Consumer → CH)
 # =============================================================================
 #
 # Architecture:
-#   Vector (6 cores) → ClickHouse Direct (2+1.5 cores) + Kafka AI Feed (1 core)
-#   Consumer handles ONLY AI pipeline topics (triage, hunter, verifier, feedback)
+#   Vector (6 cores) → Redpanda (2 cores) → Consumer (2 cores) → ClickHouse
+#   Full E2E path: NO bypass. All events flow through Kafka.
 #
 # Resource budget (12 logical CPUs, 16 GB RAM):
-#   Vector 3G + Keeper 512M + CH×2 3.5G + RP 1G + Consumer 512M ≈ 8.5G
-#   Leaves ~7.5G for Windows/WSL2 + load generator
-#   CPU: 6 + 0.5 + 2 + 1.5 + 1 + 1 = 12 (zero oversubscription)
+#   Vector 3G + Keeper 512M + CH01 2G + CH02 1G + RP 2G + Consumer 1G ≈ 9.5G
+#   Leaves ~6.5G for Windows/WSL2 + load generator
+#   CPU: 6 + 0.25 + 1.5 + 0.25 + 2 + 2 = 12 (zero oversubscription)
 #
 # Usage:
 #   docker compose -f docker-compose.eps-test.yml up -d
@@ -72,7 +72,7 @@ services:
 
   # =========================================================================
   # ClickHouse Node 1 (shard_01 / replica_01) — PRIMARY write target
-  # Vector's ClickHouse sinks write here via HTTP :8123
+  # Consumer batch-inserts here via native TCP :9000
   # =========================================================================
   clickhouse01:
     image: clickhouse/clickhouse-server:24.8
@@ -112,10 +112,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.5'
+          cpus: '1.5'
           memory: 2G
         reservations:
-          cpus: '1'
+          cpus: '0.5'
           memory: 1G
 
   # =========================================================================
@@ -167,9 +167,8 @@ services:
           memory: 768M
 
   # =========================================================================
-  # Redpanda Broker (single broker — AI pipeline only)
-  # Only needed for: security-events → triage agent → triage-scores
-  # Main ingestion bypasses Kafka entirely via Vector ClickHouse sinks.
+  # Redpanda Broker (single broker — main ingestion bus)
+  # All 4 event types flow through: Vector → Redpanda → Consumer → CH
   # =========================================================================
   redpanda01:
     image: redpandadata/redpanda:v24.2.8
@@ -184,9 +183,9 @@ services:
       - --advertise-rpc-addr redpanda01:33145
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
       - --advertise-pandaproxy-addr internal://redpanda01:8082,external://localhost:18082
-      - --smp 1
-      - --memory 800M
-      - --reserve-memory 100M
+      - --smp 2
+      - --memory 1500M
+      - --reserve-memory 200M
       - --default-log-level=warn
       - --seeds redpanda01:33145
     ports:
@@ -208,14 +207,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 1G
+          cpus: '2'
+          memory: 2G
         reservations:
-          cpus: '0.25'
-          memory: 512M
+          cpus: '1'
+          memory: 1G
 
   # =========================================================================
-  # Redpanda topic initialiser (RF=1 — single broker, AI pipeline topics)
+  # Redpanda topic initialiser (RF=1 — all ingestion + AI pipeline topics)
   # =========================================================================
   redpanda-init:
     image: redpandadata/redpanda:v24.2.8
@@ -235,16 +234,18 @@ services:
         AGENT_P=$$(( PARTITIONS / 2 ))
         [ "$$AGENT_P" -lt 3 ] && AGENT_P=3
 
-        echo "── Creating AI pipeline feed topic ($$PARTITIONS partitions, RF=$$RF) ──"
-        rpk topic create "security-events" \
-          --brokers "$$BROKER" \
-          --partitions "$$PARTITIONS" \
-          --replicas "$$RF" \
-          --topic-config retention.ms="$$RETENTION" \
-          --topic-config cleanup.policy=delete \
-          --topic-config compression.type=producer \
-          --topic-config max.message.bytes=10485760 || true
-        echo "  ✔ topic security-events ready"
+        echo "── Creating ingestion topics ($$PARTITIONS partitions, RF=$$RF) ──"
+        for TOPIC in raw-logs security-events process-events network-events; do
+          rpk topic create "$$TOPIC" \
+            --brokers "$$BROKER" \
+            --partitions "$$PARTITIONS" \
+            --replicas "$$RF" \
+            --topic-config retention.ms="$$RETENTION" \
+            --topic-config cleanup.policy=delete \
+            --topic-config compression.type=producer \
+            --topic-config max.message.bytes=10485760 || true
+          echo "  ✔ topic $$TOPIC ready"
+        done
 
         echo "── Creating triage pipeline topics ($$PARTITIONS partitions) ──"
         for TOPIC in templated-logs triage-scores anomaly-alerts; do
@@ -286,7 +287,7 @@ services:
         done
 
         rpk topic list --brokers "$$BROKER"
-        echo "All CLIF topics initialised (11 AI pipeline topics)."
+        echo "All CLIF topics initialised (15 topics — 4 ingestion + 11 pipeline)."
     environment:
       REDPANDA_PARTITIONS: ${REDPANDA_PARTITIONS:-12}
       REDPANDA_LOG_RETENTION_MS: ${REDPANDA_LOG_RETENTION_MS:-604800000}
@@ -294,7 +295,7 @@ services:
       - clif-backend
 
   # =========================================================================
-  # Vector — Log Pipeline (8 threads, 3G RAM, direct ClickHouse sinks)
+  # Vector — Log Pipeline (6 threads, 3G RAM, Kafka sinks → Redpanda)
   # =========================================================================
   clif-vector:
     build:
@@ -312,23 +313,16 @@ services:
       - "${VECTOR_STATSD_PORT:-8125}:8125/udp"
       - "${VECTOR_PROM_PORT:-9598}:9598"
     environment:
-      # ── ClickHouse sink config ──
-      CLICKHOUSE_ENDPOINT: http://clickhouse01:8123
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
-      # ── Kafka (AI pipeline feed only) ──
+      # ── Kafka sinks (all events route through Redpanda) ──
       VECTOR_KAFKA_BROKERS: redpanda01:9092
       # ── Vector runtime ──
       VECTOR_LOG: ${VECTOR_LOG_LEVEL:-info}
-      VECTOR_THREADS: ${VECTOR_THREADS:-8}
+      VECTOR_THREADS: ${VECTOR_THREADS:-6}
     volumes:
       - vector_data:/var/lib/vector
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log/host:ro
     depends_on:
-      clickhouse01:
-        condition: service_healthy
       redpanda01:
         condition: service_healthy
     networks:
@@ -344,16 +338,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8'
+          cpus: '6'
           memory: 3G
         reservations:
-          cpus: '4'
+          cpus: '3'
           memory: 1536M
 
   # =========================================================================
-  # Consumer (AI Pipeline Only — triage, hunter, verifier, feedback)
-  # Main ingestion (raw, security, process, network) bypasses this consumer
-  # entirely; Vector writes directly to ClickHouse.
+  # Consumer (Full Ingestion — all 4 event types from Redpanda → ClickHouse)
+  # Production path: Vector → Redpanda → Consumer → ClickHouse
   # =========================================================================
   clif-consumer:
     build:
@@ -363,19 +356,18 @@ services:
     hostname: clif-consumer
     environment:
       KAFKA_BROKERS: redpanda01:9092
-      KAFKA_TOPICS: "triage-scores,hunter-investigations,verifier-results,feedback-labels,dead-letter"
       CLICKHOUSE_HOST: clickhouse01
       CLICKHOUSE_ALT_HOSTS: clickhouse02:9000
       CLICKHOUSE_PORT: 9000
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
-      CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-ai-pipeline-consumer}
+      CONSUMER_GROUP_ID: ${CONSUMER_GROUP_ID:-clif-clickhouse-consumer}
       CONSUMER_BATCH_SIZE: ${CONSUMER_BATCH_SIZE:-500000}
-      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.5}
+      CONSUMER_FLUSH_INTERVAL_SEC: ${CONSUMER_FLUSH_INTERVAL_SEC:-0.3}
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
       CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
-      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-4}
+      CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
@@ -396,8 +388,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 512M
+          cpus: '2'
+          memory: 1G
         reservations:
-          cpus: '0.1'
-          memory: 256M
+          cpus: '0.5'
+          memory: 512M

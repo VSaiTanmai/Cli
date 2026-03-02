@@ -1,29 +1,30 @@
 # CLIF Cluster — 2-PC Deployment Guide
 
-Deploy all 22+ CLIF services at full scale across two Windows PCs on the same LAN.
+Deploy all CLIF services at full scale across two Windows PCs on the same LAN.
+Right-sized for **6C/12T (12 logical CPUs), 16 GB RAM** per machine.
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────┐    LAN    ┌──────────────────────────────────────┐
-│  PC1  —  DATA TIER  (~12 GB)        │◄──────────►│  PC2  —  COMPUTE TIER  (~8 GB)       │
+│  PC1  —  DATA & MESSAGE TIER         │◄──────────►│  PC2  —  COMPUTE & PRESENTATION     │
+│  (11.75 CPUs / 14.6G)               │           │  (11.5 CPUs / 10.3G)                │
 │                                      │           │                                      │
-│  Redpanda ×3   (19092/29092/39092)   │           │  Vector          (1514, 8687)        │
-│  ClickHouse ×2 (8123, 9000)         │           │  Triage Agent    (8300)               │
-│  CH Keeper     (12181)               │           │  Hunter Agent    (8400)               │
-│  MinIO ×3      (9002)               │           │  Verifier Agent  (8500)               │
-│  Consumer ×3   (internal)           │           │  AI Classifier   (8200)               │
-│  Redpanda Init (one-shot)           │           │  LanceDB         (8100)               │
-│  MinIO Init    (one-shot)           │           │  Merkle Service                       │
-│                                      │           │  Redpanda Console(8080)               │
-│  12 services (3 one-shot)           │           │  Dashboard       (3001, native npm)   │
-│                                      │           │  [opt] Prometheus(9090) + Grafana     │
-│                                      │           │                                      │
-│                                      │           │  8-10 services + Next.js dashboard    │
+│  Redpanda ×3   (19092/29092/39092)   │           │  Vector    ×1  (1514, 8687, 9514)   │
+│  ClickHouse ×2 (8123, 9000)         │           │  Triage    ×2  (8300, 8301)          │
+│  CH Keeper     (12181)               │           │  LanceDB   ×1  (8100) [--profile]   │
+│  MinIO ×3      (9002)               │           │  Merkle    ×1  (internal)            │
+│  Consumer ×2   (internal)           │           │  RP Console    (8080)                │
+│                                      │           │  Prometheus    (9090)                │
+│  12 services (2 one-shot)           │           │  Grafana       (3002)                │
+│                                      │           │  Dashboard     (3001, native npm)   │
+│  KEY WIN: Consumer → ClickHouse     │           │                                      │
+│  runs with ZERO LAN hops!           │           │  7 services + Next.js dashboard      │
 └──────────────────────────────────────┘           └──────────────────────────────────────┘
 ```
 
-**Data flow:** Logs → Vector (PC2:1514) → Redpanda (PC1) → Consumer (PC1) → ClickHouse (PC1) → Dashboard (PC2:3001)
+**Data flow:** Logs → Vector (PC2:1514) →LAN→ Redpanda (PC1) → Consumer (PC1) → ClickHouse (PC1)
+**Only 1 LAN hop** on the ingestion hot path (Vector→Redpanda).
 
 ## Prerequisites
 
@@ -115,32 +116,31 @@ LANCEDB_URL=http://localhost:8100
 
 ## Memory Budget
 
-### PC1 — Data Tier (~12 GB)
+### PC1 — Data & Message Tier (12 CPUs / 16 GB)
 
-| Service | Reservation | Limit |
-|---------|------------|-------|
-| ClickHouse Keeper | 256 MB | 512 MB |
-| ClickHouse 01 | 2 GB | 4 GB |
-| ClickHouse 02 | 2 GB | 4 GB |
-| Redpanda ×3 | 2 GB each (6 GB) | 3 GB each |
-| MinIO ×3 | 256 MB each (768 MB) | 1 GB each |
-| Consumer ×3 | 256 MB each (768 MB) | 1 GB each |
-| **Total** | **~10.8 GB** | — |
+| Service | CPU Limit | RAM Limit | Reservation |
+|---------|-----------|-----------|-------------|
+| ClickHouse Keeper | 0.5 | 512 MB | 256 MB |
+| ClickHouse 01 | 2.0 | 3 GB | 1.5 GB |
+| ClickHouse 02 | 1.0 | 2 GB | 1 GB |
+| Redpanda ×3 | 1.5 each (4.5) | 2 GB each (6 GB) | 1.5 GB each |
+| MinIO ×3 | 0.25 each (0.75) | 512 MB each (1.5 GB) | 128 MB each |
+| Consumer ×2 | 1.5 each (3.0) | 768 MB each (1.5 GB) | 256 MB each |
+| **Total** | **11.75** | **14.6 GB** | **6.6 GB** |
 
-### PC2 — Compute Tier (~6 GB)
+### PC2 — Compute & Presentation Tier (12 CPUs / 16 GB)
 
-| Service | Reservation | Limit |
-|---------|------------|-------|
-| Vector | 1 GB | 4 GB |
-| LanceDB | 1 GB | 3 GB |
-| Triage Agent | 1 GB | 4 GB |
-| Hunter Agent | 512 MB | 3 GB |
-| Verifier Agent | 512 MB | 2 GB |
-| AI Classifier | 512 MB | 2 GB |
-| Merkle | 128 MB | 512 MB |
-| RP Console | — | 256 MB |
-| Dashboard (npm) | ~500 MB | — |
-| **Total** | **~5.2 GB** | — |
+| Service | CPU Limit | RAM Limit | Reservation |
+|---------|-----------|-----------|-------------|
+| Vector | 5.0 | 3 GB | 1.5 GB |
+| Triage Agent ×2 | 2.0 each (4.0) | 2 GB each (4 GB) | 768 MB each |
+| LanceDB [full] | 1.0 | 2 GB | 768 MB |
+| Merkle | 0.5 | 256 MB | 128 MB |
+| Prometheus | 0.5 | 512 MB | 256 MB |
+| Grafana | 0.25 | 256 MB | 128 MB |
+| RP Console | 0.25 | 256 MB | — |
+| Dashboard (npm) | ~1.0 | ~500 MB | — |
+| **Total** | **11.5** | **10.3 GB** | **4.3 GB** |
 
 ## Running the Benchmark
 
