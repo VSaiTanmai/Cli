@@ -777,7 +777,7 @@ sinks:
     type: clickhouse
     inputs:
       - "route_by_type.raw"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123}"
+    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
     database: "${CLICKHOUSE_DB:-clif_logs}"
     table: "raw_logs"
     auth:
@@ -787,31 +787,31 @@ sinks:
     encoding:
       timestamp_format: "rfc3339"
     batch:
-      max_events: 65536
-      max_bytes: 20971520
+      max_events: 50000
+      max_bytes: 16777216
       timeout_secs: 1
     buffer:
       type: memory
-      max_events: 200000
-      when_full: block
-    compression: gzip
+      max_events: 500000
+      when_full: drop_newest
+    compression: none
     request:
-      concurrency: 4
+      concurrency: 20
       timeout_secs: 60
-      rate_limit_num: 250
+      rate_limit_num: 9999
       rate_limit_duration_secs: 1
       retry_initial_backoff_secs: 1
       retry_max_duration_secs: 30
     healthcheck:
-      enabled: true
-    acknowledgements: true
+      enabled: false
+    acknowledgements: false
 
   # ── Security Events → ClickHouse Direct ─────────────────────────────────
   sink_security_events:
     type: clickhouse
     inputs:
       - "route_by_type.security"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123}"
+    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
     database: "${CLICKHOUSE_DB:-clif_logs}"
     table: "security_events"
     auth:
@@ -821,31 +821,31 @@ sinks:
     encoding:
       timestamp_format: "rfc3339"
     batch:
-      max_events: 65536
-      max_bytes: 10485760
+      max_events: 50000
+      max_bytes: 16777216
       timeout_secs: 1
     buffer:
       type: memory
-      max_events: 100000
-      when_full: block
-    compression: gzip
+      max_events: 500000
+      when_full: drop_newest
+    compression: none
     request:
-      concurrency: 4
+      concurrency: 20
       timeout_secs: 60
-      rate_limit_num: 250
+      rate_limit_num: 9999
       rate_limit_duration_secs: 1
       retry_initial_backoff_secs: 1
       retry_max_duration_secs: 30
     healthcheck:
-      enabled: true
-    acknowledgements: true
+      enabled: false
+    acknowledgements: false
 
   # ── Process Events → ClickHouse Direct ──────────────────────────────────
   sink_process_events:
     type: clickhouse
     inputs:
       - "route_by_type.process"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123}"
+    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
     database: "${CLICKHOUSE_DB:-clif_logs}"
     table: "process_events"
     auth:
@@ -855,31 +855,31 @@ sinks:
     encoding:
       timestamp_format: "rfc3339"
     batch:
-      max_events: 65536
-      max_bytes: 10485760
+      max_events: 50000
+      max_bytes: 16777216
       timeout_secs: 1
     buffer:
       type: memory
-      max_events: 100000
-      when_full: block
-    compression: gzip
+      max_events: 500000
+      when_full: drop_newest
+    compression: none
     request:
-      concurrency: 4
+      concurrency: 20
       timeout_secs: 60
-      rate_limit_num: 250
+      rate_limit_num: 9999
       rate_limit_duration_secs: 1
       retry_initial_backoff_secs: 1
       retry_max_duration_secs: 30
     healthcheck:
-      enabled: true
-    acknowledgements: true
+      enabled: false
+    acknowledgements: false
 
   # ── Network Events → ClickHouse Direct ──────────────────────────────────
   sink_network_events:
     type: clickhouse
     inputs:
       - "route_by_type.network"
-    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123}"
+    endpoint: "${CLICKHOUSE_ENDPOINT:-http://clickhouse01:8123/?async_insert=1&wait_for_async_insert=0}"
     database: "${CLICKHOUSE_DB:-clif_logs}"
     table: "network_events"
     auth:
@@ -889,24 +889,24 @@ sinks:
     encoding:
       timestamp_format: "rfc3339"
     batch:
-      max_events: 65536
-      max_bytes: 10485760
+      max_events: 50000
+      max_bytes: 16777216
       timeout_secs: 1
     buffer:
       type: memory
-      max_events: 100000
-      when_full: block
-    compression: gzip
+      max_events: 500000
+      when_full: drop_newest
+    compression: none
     request:
-      concurrency: 4
+      concurrency: 20
       timeout_secs: 60
-      rate_limit_num: 250
+      rate_limit_num: 9999
       rate_limit_duration_secs: 1
       retry_initial_backoff_secs: 1
       retry_max_duration_secs: 30
     healthcheck:
-      enabled: true
-    acknowledgements: true
+      enabled: false
+    acknowledgements: false
 
   # ── Security Events → Kafka (AI Pipeline Feed) ─────────────────────────
   # Security events are DUAL-WRITTEN: directly to ClickHouse (above) and
@@ -926,18 +926,18 @@ sinks:
     batch:
       max_bytes: 10485760
       max_events: 50000
-      timeout_secs: 0.5
+      timeout_secs: 0.1
     buffer:
       type: memory
       max_events: 100000
-      when_full: block
+      when_full: drop_newest
     librdkafka_options:
-      "queue.buffering.max.messages": "500000"
-      "queue.buffering.max.kbytes": "524288"
-      "message.send.max.retries": "10"
-      "retry.backoff.ms": "200"
+      "queue.buffering.max.messages": "1000000"
+      "queue.buffering.max.kbytes": "1048576"
+      "message.send.max.retries": "3"
+      "retry.backoff.ms": "100"
       "request.required.acks": "1"
-      "linger.ms": "20"
+      "linger.ms": "100"
       "compression.type": "lz4"
 
   # ── Vector Internal Metrics → Prometheus ─────────────────────────────────
