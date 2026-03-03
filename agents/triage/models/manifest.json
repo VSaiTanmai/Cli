@@ -1,23 +1,26 @@
 {
+  "version": "v3.0.0",
+  "trained_at": "2026-03-03T14:39:57Z",
   "lgbm": {
     "active": "v2.0.0",
     "file": "lgbm_v2.0.0.onnx",
     "metrics": {
-      "accuracy": 0.9597,
-      "precision": 0.9532,
-      "recall": 0.9655,
-      "f1": 0.9593
-    }
+      "accuracy": 0.9685,
+      "precision": 0.9682,
+      "recall": 0.9725,
+      "f1": 0.9704
+    },
+    "best_iteration": 1000
   },
   "eif": {
     "active": "v2.0.0",
     "file": "eif_v2.0.0.pkl",
     "calibration": {
-      "mean": 0.396622,
-      "std": 0.057149
+      "mean": 0.396258,
+      "std": 0.056144
     },
-    "threshold": 0.7458,
-    "discrimination_delta": -0.0682
+    "threshold": 0.7379,
+    "discrimination_delta": -0.053
   },
   "arf": {
     "active": "v2.0.0",
@@ -25,8 +28,8 @@
     "stream_csv": "features_arf_stream_features.csv"
   },
   "thresholds": {
-    "suspicious": 0.4,
-    "anomalous": 0.7
+    "suspicious": 0.32,
+    "anomalous": 0.89
   },
   "datasets": [
     "cicids2017",
@@ -37,8 +40,25 @@
     "csic_2010",
     "evtx",
     "loghub_linux",
-    "loghub_apache"
+    "loghub_apache",
+    "dns_exfil",
+    "openssh",
+    "hdfs"
   ],
+  "dataset_fingerprints": {
+    "load_cicids2017": "5e23076207d4",
+    "load_nsl_kdd": "df25d4c497a2",
+    "load_unsw_nb15": "81b922c32c54",
+    "load_nf_unsw": "febe15472660",
+    "load_ton_iot": "c0c87be4704b",
+    "load_csic2010": "2cb9ac0f381e",
+    "load_evtx": "b5e255b0dbd6",
+    "load_loghub_linux": "4d350afef79f",
+    "load_loghub_apache": "bfb986cee596",
+    "load_dns_exfil": "473eaf8b26d7",
+    "load_openssh": "850513c06d33",
+    "load_hdfs": "a11abc323d82"
+  },
   "feature_cols": [
     "hour_of_day",
     "day_of_week",
@@ -60,5 +80,10 @@
     "srv_count",
     "dst_host_count",
     "dst_host_srv_count"
-  ]
+  ],
+  "label_leakage_prevention": {
+    "severity_source": "original_log_level (source-system severity, not Vector classification)",
+    "network_datasets_severity": "random_normal(1.0, 0.5) \u2014 no inherent severity",
+    "log_datasets_severity": "content-keyword-based with Gaussian noise"
+  }
 }
