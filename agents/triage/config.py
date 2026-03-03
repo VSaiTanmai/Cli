@@ -220,7 +220,13 @@ PROTOCOL_MAP = {
     "sctp": 132,
 }
 
-# ── Severity Text → Numeric ────────────────────────────────────────────────
+# ── Severity Text → Numeric ────────────────────────────────────────────
+# Maps the SOURCE SYSTEM's original log level to numeric 0-4.
+# Vector CCS now emits 'original_log_level' (int 0-4) in all event types,
+# captured BEFORE Section C classification. This map handles backward-
+# compat cases where the raw text level string is passed instead.
+# NOTE: This does NOT map Vector's classification severity — that would
+# create a circular dependency (label leakage) in the model features.────
 
 SEVERITY_MAP = {
     "info": 0,

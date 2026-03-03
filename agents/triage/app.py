@@ -333,6 +333,7 @@ class TriageProcessor:
             "ip_address": "192.168.1.100",
             "user": "selftest-user",
             "severity": "medium",
+            "original_log_level": 2,
             "source_type": "syslog",
             "message": "selftest: Jan 15 10:30:00 sshd[12345]: Failed password for root from 10.0.0.1 port 22 ssh2",
             "message_body": "Failed password for root from 10.0.0.1 port 22 ssh2",
@@ -387,6 +388,7 @@ class TriageProcessor:
             synthetic_event_2 = {
                 **synthetic_event,
                 "severity": "critical",
+                "original_log_level": 4,
                 "message_body": "CRITICAL kernel panic: not syncing: Fatal exception",
                 "ip_address": "10.99.99.99",
             }

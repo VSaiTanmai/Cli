@@ -235,6 +235,23 @@ transforms:
       _msg = if is_string(.message) { to_string!(.message) } else { "" }
       _msg_body = _msg
 
+      # ── Original log level: SOURCE system severity, NOT Vector's classification ─
+      # Set as an event FIELD (not VRL variable) so it's visible in Section E
+      # output formatting. Initialized from raw .level/.severity BEFORE Section C
+      # classification can overwrite .severity. Pre-classified events get their
+      # level from the incoming fields.
+      .original_log_level = 0
+      if exists(.level) {
+        _oll_raw = upcase(to_string!(.level))
+        if _oll_raw == "CRITICAL" || _oll_raw == "ALERT" || _oll_raw == "EMERG" || _oll_raw == "CRIT" { .original_log_level = 4 } else if _oll_raw == "ERROR" || _oll_raw == "ERR" { .original_log_level = 3 } else if _oll_raw == "WARNING" || _oll_raw == "WARN" { .original_log_level = 2 } else if _oll_raw == "DEBUG" || _oll_raw == "TRACE" { .original_log_level = 0 } else { .original_log_level = 0 }
+      } else if exists(.severity) {
+        _oll_sev, err = to_int(.severity)
+        if err == null { .original_log_level = if _oll_sev > 4 { 4 } else if _oll_sev < 0 { 0 } else { _oll_sev } }
+      } else if exists(.priority) {
+        _oll_pri, err = to_int(.priority)
+        if err == null { .original_log_level = if _oll_pri <= 2 { 4 } else if _oll_pri == 3 { 3 } else if _oll_pri == 4 { 2 } else { 0 } }
+      }
+
       if !_skip_classify {
         # ── JSON parse: ONLY if message looks like JSON ────────────────
         if is_string(.message) {
@@ -308,6 +325,11 @@ transforms:
             .level = "INFO"
           }
         }
+
+        # ── Update original_log_level with Section B's normalized .level ──
+        # The top-level scope pre-computed .original_log_level from raw fields.
+        # Now that Section B has canonicalized .level, update with the clean value.
+        .original_log_level = if .level == "CRITICAL" { 4 } else if .level == "ERROR" { 3 } else if .level == "WARNING" { 2 } else if .level == "DEBUG" { 0 } else { 0 }
 
         # ── Normalize source ───────────────────────────────────────────
         if exists(.appname) && to_string!(.appname) != "" {
@@ -651,6 +673,7 @@ transforms:
           "ai_explanation": "",
           "message_body": _msg_body,
           "source_type": _src_type,
+          "original_log_level": .original_log_level,
           "metadata": _metadata
         }
 
@@ -677,6 +700,7 @@ transforms:
           "detection_rule": "",
           "message_body": _msg_body,
           "source_type": _src_type,
+          "original_log_level": .original_log_level,
           "metadata": _metadata
         }
 
@@ -711,6 +735,7 @@ transforms:
           "detection_rule": "",
           "message_body": _msg_body,
           "source_type": _src_type,
+          "original_log_level": .original_log_level,
           "metadata": _metadata
         }
 
@@ -739,6 +764,7 @@ transforms:
           "message": _msg,
           "message_body": _msg_body,
           "source_type": _src_type,
+          "original_log_level": .original_log_level,
           "metadata": _metadata
         }
       }

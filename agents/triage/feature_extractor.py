@@ -276,8 +276,22 @@ class FeatureExtractor:
         hour_of_day = ts.hour
         day_of_week = ts.weekday()  # 0=Monday
 
-        # ── Feature 3: Severity ──────────────────────────────────────────
-        severity_raw = event.get("severity", event.get("level", "info"))
+        # ── Feature 3: Severity (from ORIGINAL source log level) ─────────
+        # Vector CCS now emits 'original_log_level' (0-4) captured in
+        # Section B BEFORE Section C classification overwrites .severity.
+        # This breaks the circular dependency where Vector's own regex
+        # classification leaked into the models via severity_numeric,
+        # causing novel anomalies (no regex match → severity=0) to be
+        # systematically under-scored.
+        #
+        # Fallback chain for backward compatibility:
+        #   1. original_log_level  — honest source-system severity (preferred)
+        #   2. level               — raw events still carry this
+        #   3. severity            — legacy events without the fix
+        severity_raw = event.get(
+            "original_log_level",
+            event.get("level", event.get("severity", "info"))
+        )
         severity_numeric = self._map_severity(severity_raw)
 
         # ── Feature 4: Source Type ───────────────────────────────────────
