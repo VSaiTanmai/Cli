@@ -63,7 +63,7 @@ def rpk_produce(topic: str, payload: str):
     r = subprocess.run(
         ["docker", "exec", "-i", "clif-redpanda01", "rpk", "topic", "produce", topic,
          "--key", str(uuid.uuid4())[:8]],
-        input=payload.encode(), capture_output=True, timeout=10,
+        input=(payload + "\n").encode(), capture_output=True, timeout=10,
     )
     return r.returncode == 0
 
