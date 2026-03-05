@@ -52,3 +52,5 @@ wsl_test.txt
 # Vector config backups
 vector/*.backup*
 vector/*.optimized*
+
+__teammate_repo/

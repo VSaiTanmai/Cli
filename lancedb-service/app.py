@@ -141,6 +141,25 @@ HISTORICAL_INCIDENT_SCHEMA = pa.schema([
     pa.field("vector", pa.list_(pa.float32(), EMBEDDING_DIM)),
 ])
 
+# attack_embeddings: confirmed attacks ONLY (V5 architecture).
+# Populated from triage_scores WHERE action='escalate' AND adjusted_score > 0.8,
+# feedback_labels WHERE label='true_positive', and Hunter high-severity results.
+# Used exclusively for verdict search ("Is this a known attack?") -- NEVER
+# contaminated with normal log events to prevent novel-attack false negatives.
+ATTACK_EMBEDDING_SCHEMA = pa.schema([
+    pa.field("attack_id", pa.string()),       # UUID of the source event
+    pa.field("source_type", pa.string()),     # cisco/dns/firewall/etc.
+    pa.field("hostname", pa.string()),
+    pa.field("mitre_tactic", pa.string()),
+    pa.field("mitre_technique", pa.string()),
+    pa.field("severity", pa.int32()),         # 0-4 matching investigation severity
+    pa.field("template_id", pa.string()),
+    pa.field("description", pa.string()),     # Embedding source text
+    pa.field("confirmed_at", pa.string()),    # When attack was confirmed
+    pa.field("label_source", pa.string()),    # analyst/verifier/pseudo_positive
+    pa.field("vector", pa.list_(pa.float32(), EMBEDDING_DIM)),
+])
+
 
 # ─── Embedding Engine ───────────────────────────────────────────────────────
 
@@ -209,6 +228,10 @@ class LanceDBManager:
         if "historical_incidents" not in existing:
             self.db.create_table("historical_incidents", schema=HISTORICAL_INCIDENT_SCHEMA)
             log.info("Created table: historical_incidents")
+
+        if "attack_embeddings" not in existing:
+            self.db.create_table("attack_embeddings", schema=ATTACK_EMBEDDING_SCHEMA)
+            log.info("Created table: attack_embeddings (confirmed attacks only)")
 
     def ingest_logs(self, rows: list[dict]) -> int:
         """Embed and store log events. Returns count ingested."""
@@ -300,6 +323,47 @@ class LanceDBManager:
         tbl = self.db.open_table("historical_incidents")
         tbl.add(records)
         self._stats["total_embeddings"] += len(records)
+        return len(records)
+
+    def ingest_attack_embeddings(self, attacks: list[dict]) -> int:
+        """Embed and store confirmed attacks in attack_embeddings.
+
+        CRITICAL: Only call this with CONFIRMED attacks (analyst-verified or
+        high-confidence verifier verdicts). Never ingest normal/benign events.
+        Contamination of this table causes novel attacks to be mis-classified
+        as benign (nearest neighbor is a normal event, not an attack).
+        """
+        if not attacks:
+            return 0
+
+        texts = [
+            f"{r.get('source_type', '')} {r.get('hostname', '')} "
+            f"{r.get('mitre_tactic', '')} {r.get('mitre_technique', '')} "
+            f"{r.get('template_id', '')} {r.get('description', '')}"
+            for r in attacks
+        ]
+        vectors = self.engine.encode(texts)
+
+        records = []
+        for row, vec in zip(attacks, vectors):
+            records.append({
+                "attack_id":      str(row.get("attack_id", "")),
+                "source_type":    str(row.get("source_type", "")),
+                "hostname":       str(row.get("hostname", "")),
+                "mitre_tactic":   str(row.get("mitre_tactic", "")),
+                "mitre_technique":str(row.get("mitre_technique", "")),
+                "severity":       int(row.get("severity", 0)),
+                "template_id":    str(row.get("template_id", "")),
+                "description":    str(row.get("description", "")),
+                "confirmed_at":   str(row.get("confirmed_at", "")),
+                "label_source":   str(row.get("label_source", "pseudo_positive")),
+                "vector":         vec.tolist(),
+            })
+
+        tbl = self.db.open_table("attack_embeddings")
+        tbl.add(records)
+        self._stats["total_embeddings"] += len(records)
+        log.info("Ingested %d confirmed attacks into attack_embeddings", len(records))
         return len(records)
 
     def search(
@@ -559,6 +623,12 @@ class IngestIOCRequest(BaseModel):
 class IngestIncidentRequest(BaseModel):
     incidents: list[dict] = Field(..., min_length=1, max_length=100)
 
+class IngestAttackEmbeddingRequest(BaseModel):
+    """Request to add confirmed attacks to attack_embeddings table.
+    Only for analyst-verified or verifier-confirmed attacks.
+    """
+    attacks: list[dict] = Field(..., min_length=1, max_length=1000)
+
 
 # ─── FastAPI App ─────────────────────────────────────────────────────────────
 
@@ -746,6 +816,21 @@ async def ingest_incidents(req: IngestIncidentRequest):
 
     count = _manager.ingest_incidents(req.incidents)
     return {"ingested": count}
+
+
+@app.post("/ingest/attack-embeddings")
+async def ingest_attack_embeddings(req: IngestAttackEmbeddingRequest):
+    """Ingest confirmed attacks into attack_embeddings for Hunter Agent verdict search.
+
+    ONLY call with analyst-verified or verifier-confirmed attacks.
+    Benign events MUST NOT be added here -- contamination causes novel attacks
+    to be mis-classified as benign (high-distance novelty detection fails).
+    """
+    if not _manager:
+        raise HTTPException(503, "Service not initialized")
+
+    count = _manager.ingest_attack_embeddings(req.attacks)
+    return {"ingested": count, "table": "attack_embeddings"}
 
 
 @app.get("/tables")

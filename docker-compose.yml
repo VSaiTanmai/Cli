@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # CLIF Storage Infrastructure â€” Docker Compose
 # =============================================================================
 # Start:   docker-compose up -d
@@ -36,6 +36,7 @@ volumes:
   prometheus_data:
   grafana_data:
   lancedb_data:
+  hunter_models:
 
 # â”€â”€ Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 services:
@@ -1216,6 +1217,82 @@ services:
           cpus: '1'
           memory: 1G
 
+
+  # ==========================================================================
+  # CLIF Hunter Agent -- Investigation pipeline (hunter-tasks -> hunter-results)
+  # Triple-Layer Detection: Sigma fast-path + L1 parallel (Temporal/Similarity/
+  # Graph/SPC) + L2 parallel (MITRE/Campaign) + Fusion + 2-Phase CatBoost.
+  # Publishes verdicts to hunter-results (consumer -> hunter_investigations CH)
+  # Writes training data directly to hunter_training_data ClickHouse table.
+  # NOTE: Requires --profile full for full LanceDB similarity features.
+  # ==========================================================================
+  clif-hunter-agent:
+    container_name: clif-hunter-agent
+    hostname: clif-hunter-agent
+    build:
+      context: ./agents/hunter
+      dockerfile: Dockerfile
+    environment:
+      # -- Kafka / Redpanda --
+      KAFKA_BROKERS: "redpanda01:9092"
+      CONSUMER_GROUP_ID: "clif-hunter-agent"
+      TOPIC_HUNTER_TASKS: "hunter-tasks"
+      TOPIC_HUNTER_RESULTS: "hunter-results"
+      TOPIC_DEAD_LETTER: "dead-letter"
+      # -- ClickHouse (clickhouse-connect uses HTTP port 8123) --
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: ${CLICKHOUSE_HTTP_PORT:-8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      # -- LanceDB (requires --profile full for full vector similarity) --
+      LANCEDB_URL: "http://lancedb:8100"
+      LANCEDB_TIMEOUT_SEC: "3.0"
+      LANCEDB_BACKOFF_SEC: "60.0"
+      # -- Hunter pipeline --
+      HUNTER_PORT: "8400"
+      HUNTER_SCORE_GATE: "0.65"
+      INVESTIGATION_WINDOW_MIN: "15"
+      SIGMA_RULES_DIR: "/app/sigma/rules"
+      CATBOOST_MODEL_PATH: "/app/models/hunter_catboost.cbm"
+      MIN_TRAINING_SAMPLES: "100"
+      RETRAIN_INTERVAL_SEC: "21600"
+      SPC_BASELINE_REFRESH_SEC: "60"
+      SPC_WINDOW_HOURS: "24"
+      BATCH_SIZE: "100"
+      LOG_LEVEL: INFO
+    volumes:
+      - hunter_models:/app/models
+    ports:
+      - "8400:8400"
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+      clickhouse01:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      clif-triage-agent:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8400/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
   # â”€â”€ Triage Agent 4 â”€â”€
   clif-triage-agent-4:
     container_name: clif-triage-agent-4
