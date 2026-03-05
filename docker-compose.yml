@@ -1,18 +1,18 @@
-# =============================================================================
-# CLIF Storage Infrastructure — Docker Compose
+﻿# =============================================================================
+# CLIF Storage Infrastructure â€” Docker Compose
 # =============================================================================
 # Start:   docker-compose up -d
 # Destroy: docker-compose down -v
 # =============================================================================
 
-# ── Logging defaults (prevents disk exhaustion) ──────────────────────────────
+# â”€â”€ Logging defaults (prevents disk exhaustion) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 x-logging: &default-logging
   driver: json-file
   options:
     max-size: "50m"
     max-file: "5"
 
-# ── Networks ─────────────────────────────────────────────────────────────────
+# â”€â”€ Networks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 networks:
   clif-frontend:
     driver: bridge
@@ -21,7 +21,7 @@ networks:
   clif-storage:
     driver: bridge
 
-# ── Persistent volumes ───────────────────────────────────────────────────────
+# â”€â”€ Persistent volumes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 volumes:
   clickhouse01_data:
   clickhouse02_data:
@@ -37,7 +37,7 @@ volumes:
   grafana_data:
   lancedb_data:
 
-# ── Services ─────────────────────────────────────────────────────────────────
+# â”€â”€ Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 services:
 
   # =========================================================================
@@ -483,7 +483,7 @@ services:
         AGENT_P=$$(( PARTITIONS / 2 ))
         [ "$$AGENT_P" -lt 3 ] && AGENT_P=3
 
-        echo "── Creating ingestion topics ($$PARTITIONS partitions) ──"
+        echo "â”€â”€ Creating ingestion topics ($$PARTITIONS partitions) â”€â”€"
         for TOPIC in raw-logs security-events process-events network-events; do
           rpk topic create "$$TOPIC" \
             --brokers "$$BROKER" \
@@ -493,10 +493,10 @@ services:
             --topic-config cleanup.policy=delete \
             --topic-config compression.type=producer \
             --topic-config max.message.bytes=10485760 || true
-          echo "  ✔ topic $$TOPIC ready"
+          echo "  âœ” topic $$TOPIC ready"
         done
 
-        echo "── Creating triage pipeline topics ($$PARTITIONS partitions) ──"
+        echo "â”€â”€ Creating triage pipeline topics ($$PARTITIONS partitions) â”€â”€"
         for TOPIC in templated-logs triage-scores anomaly-alerts; do
           rpk topic create "$$TOPIC" \
             --brokers "$$BROKER" \
@@ -506,10 +506,10 @@ services:
             --topic-config cleanup.policy=delete \
             --topic-config compression.type=producer \
             --topic-config max.message.bytes=10485760 || true
-          echo "  ✔ topic $$TOPIC ready"
+          echo "  âœ” topic $$TOPIC ready"
         done
 
-        echo "── Creating agent pipeline topics ($$AGENT_P partitions) ──"
+        echo "â”€â”€ Creating agent pipeline topics ($$AGENT_P partitions) â”€â”€"
         for TOPIC in hunter-tasks hunter-results verifier-tasks verifier-results; do
           rpk topic create "$$TOPIC" \
             --brokers "$$BROKER" \
@@ -519,10 +519,10 @@ services:
             --topic-config cleanup.policy=delete \
             --topic-config compression.type=producer \
             --topic-config max.message.bytes=10485760 || true
-          echo "  ✔ topic $$TOPIC ready"
+          echo "  âœ” topic $$TOPIC ready"
         done
 
-        echo "── Creating operational topics (3 partitions) ──"
+        echo "â”€â”€ Creating operational topics (3 partitions) â”€â”€"
         for TOPIC in feedback-labels dead-letter pipeline-commands; do
           rpk topic create "$$TOPIC" \
             --brokers "$$BROKER" \
@@ -532,7 +532,7 @@ services:
             --topic-config cleanup.policy=delete \
             --topic-config compression.type=producer \
             --topic-config max.message.bytes=10485760 || true
-          echo "  ✔ topic $$TOPIC ready"
+          echo "  âœ” topic $$TOPIC ready"
         done
 
         rpk topic list --brokers "$$BROKER"
@@ -545,7 +545,7 @@ services:
       - clif-backend
 
   # =========================================================================
-  # CLIF Consumer 1 (Redpanda → ClickHouse pipeline)
+  # CLIF Consumer 1 (Redpanda â†’ ClickHouse pipeline)
   # =========================================================================
   clif-consumer:
     build:
@@ -593,9 +593,9 @@ services:
           cpus: '0.5'
           memory: 256M
 
-  # ── Consumer-2: horizontal scaling for higher E2E throughput ──
+  # â”€â”€ Consumer-2: horizontal scaling for higher E2E throughput â”€â”€
   # Re-enabled after Redpanda memory optimization freed 2.5GB.
-  # Same consumer group → Redpanda distributes partitions across both.
+  # Same consumer group â†’ Redpanda distributes partitions across both.
   clif-consumer-2:
     build:
       context: ./consumer
@@ -642,7 +642,7 @@ services:
           cpus: '0.5'
           memory: 256M
 
-  # ── Consumer-3: 3rd horizontal consumer for 70-100K+ E2E throughput ──
+  # â”€â”€ Consumer-3: 3rd horizontal consumer for 70-100K+ E2E throughput â”€â”€
   # 12 partitions / 3 consumers = 4 partitions each (optimal distribution)
   clif-consumer-3:
     build:
@@ -691,7 +691,7 @@ services:
           memory: 256M
 
   # =========================================================================
-  # Vector — Log Aggregation & CCS Normalization Pipeline
+  # Vector â€” Log Aggregation & CCS Normalization Pipeline
   # =========================================================================
   # Collects logs from syslog, HTTP, Docker, files, and journald.
   # Normalizes all events to CLIF Common Schema (CCS) via VRL transforms.
@@ -865,7 +865,7 @@ services:
           memory: 128M
 
   # =========================================================================
-  # LanceDB — Semantic Vector Search & RAG Engine
+  # LanceDB â€” Semantic Vector Search & RAG Engine
   # Disabled during pipeline testing. Enable with: docker compose --profile full up
   # =========================================================================
   lancedb:
@@ -917,7 +917,7 @@ services:
           cpus: '0.5'
           memory: 1G
   # =========================================================================
-  # Triage Agent — 3-Model ML Ensemble (LightGBM ONNX + EIF + River ARF)
+  # Triage Agent â€” 3-Model ML Ensemble (LightGBM ONNX + EIF + River ARF)
   # =========================================================================
   # Consumes from: raw-logs, security-events, process-events, network-events
   # Produces to:   triage-scores, anomaly-alerts (dead-letter on error)
@@ -930,31 +930,31 @@ services:
       context: ./agents/triage
       dockerfile: Dockerfile
     environment:
-      # ── Redpanda connectivity ──
+      # â”€â”€ Redpanda connectivity â”€â”€
       KAFKA_BROKERS: "redpanda01:9092"
       CONSUMER_GROUP_ID: "clif-triage-agent"
-      # ── Input topics (same 4 ingestion topics) ──
+      # â”€â”€ Input topics (same 4 ingestion topics) â”€â”€
       INPUT_TOPICS: "raw-logs,security-events,process-events,network-events"
-      # ── Output topics ──
+      # â”€â”€ Output topics â”€â”€
       TOPIC_TEMPLATED_LOGS: "templated-logs"
       TOPIC_TRIAGE_SCORES: "triage-scores"
       TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
       TOPIC_HUNTER_TASKS: "hunter-tasks"
       TOPIC_DEAD_LETTER: "dead-letter"
-      # ── ClickHouse (feature queries + score persistence) ──
+      # â”€â”€ ClickHouse (feature queries + score persistence) â”€â”€
       CLICKHOUSE_HOST: clickhouse01
       CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
-      # ── Drain3 configuration ──
+      # â”€â”€ Drain3 configuration â”€â”€
       DRAIN3_DEPTH: 4
       DRAIN3_SIM_TH: 0.4
       DRAIN3_MAX_CHILDREN: 100
       DRAIN3_MAX_CLUSTERS: 1024
       DRAIN3_CONFIG_PATH: /app/drain3.ini
       DRAIN3_STATE_PATH: /app/drain3_state.bin
-      # ── ML model paths ──
+      # â”€â”€ ML model paths â”€â”€
       MODEL_DIR: /models
       MODEL_LGBM_PATH: /models/lgbm_v2.0.0.onnx
       MODEL_EIF_PATH: /models/eif_v2.0.0.pkl
@@ -963,21 +963,21 @@ services:
       MODEL_ARF_CHECKPOINT: /models/arf_v2.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # ── Scoring (v4 inference-aligned) ──
-      SCORE_WEIGHTS: "lgbm=0.60,eif=0.15,arf=0.25"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
+      # â”€â”€ Scoring (v5 â€” LGBM-dominant, 2026-03-05) â”€â”€
+      SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.35"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.78"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
-      # ── EIF Anomaly Override ──
+      # â”€â”€ EIF Anomaly Override â”€â”€
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
       EIF_ANOMALY_OVERRIDE_FLOOR: "0.45"
-      # ── Performance ──
+      # â”€â”€ Performance â”€â”€
       BATCH_SIZE: "1000"
       INFERENCE_WORKERS: "4"
       CONN_TIME_WINDOW_SEC: "2.0"
       CONN_HOST_WINDOW_SIZE: "100"
-      # ── ARF Warm Restart ──
+      # â”€â”€ ARF Warm Restart â”€â”€
       ARF_WARM_RESTART: "true"
       ARF_REPLAY_HOURS: "24"
       ARF_REPLAY_MAX_ROWS: "50000"
@@ -990,7 +990,7 @@ services:
       ARF_LABEL_SOURCE: "lgbm_pseudo"
       ARF_PSEUDO_LABEL_HIGH: "0.80"
       ARF_PSEUDO_LABEL_LOW: "0.20"
-      # ── Health / Self-test ──
+      # â”€â”€ Health / Self-test â”€â”€
       SELFTEST_ENABLED: "true"
       STARTUP_HEALTH_RETRIES: "30"
       STARTUP_HEALTH_DELAY_SEC: "2.0"
@@ -1026,9 +1026,9 @@ services:
           cpus: '1'
           memory: 1G
 
-  # ── Triage Agent 2: Horizontal scaling for 200k EPS triage throughput ──
-  # Same consumer group → Redpanda distributes partitions across all agents.
-  # 48 topic-partitions (12 × 4 topics) / 4 agents = 12 partitions each.
+  # â”€â”€ Triage Agent 2: Horizontal scaling for 200k EPS triage throughput â”€â”€
+  # Same consumer group â†’ Redpanda distributes partitions across all agents.
+  # 48 topic-partitions (12 Ã— 4 topics) / 4 agents = 12 partitions each.
   clif-triage-agent-2:
     container_name: clif-triage-agent-2
     hostname: clif-triage-agent-2
@@ -1063,10 +1063,10 @@ services:
       MODEL_ARF_CHECKPOINT: /models/arf_v2.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # ── Scoring (v4 inference-aligned) ──
-      SCORE_WEIGHTS: "lgbm=0.60,eif=0.15,arf=0.25"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
+      # â”€â”€ Scoring (v5 — LGBM-dominant, 2026-03-05) â”€â”€
+      SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.35"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.78"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
@@ -1122,7 +1122,7 @@ services:
           cpus: '1'
           memory: 1G
 
-  # ── Triage Agent 3 ──
+  # â”€â”€ Triage Agent 3 â”€â”€
   clif-triage-agent-3:
     container_name: clif-triage-agent-3
     hostname: clif-triage-agent-3
@@ -1157,10 +1157,10 @@ services:
       MODEL_ARF_CHECKPOINT: /models/arf_v2.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # ── Scoring (v4 inference-aligned) ──
-      SCORE_WEIGHTS: "lgbm=0.60,eif=0.15,arf=0.25"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
+      # â”€â”€ Scoring (v5 — LGBM-dominant, 2026-03-05) â”€â”€
+      SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.35"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.78"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
@@ -1216,7 +1216,7 @@ services:
           cpus: '1'
           memory: 1G
 
-  # ── Triage Agent 4 ──
+  # â”€â”€ Triage Agent 4 â”€â”€
   clif-triage-agent-4:
     container_name: clif-triage-agent-4
     hostname: clif-triage-agent-4
@@ -1251,10 +1251,10 @@ services:
       MODEL_ARF_CHECKPOINT: /models/arf_v2.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # ── Scoring (v4 inference-aligned) ──
-      SCORE_WEIGHTS: "lgbm=0.60,eif=0.15,arf=0.25"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
+      # â”€â”€ Scoring (v5 — LGBM-dominant, 2026-03-05) â”€â”€
+      SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.35"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.78"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
