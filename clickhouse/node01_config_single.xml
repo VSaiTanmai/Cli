@@ -32,7 +32,8 @@
         <parts_to_delay_insert>300</parts_to_delay_insert>
         <parts_to_throw_insert>600</parts_to_throw_insert>
         <max_bytes_to_merge_at_max_space_in_pool>161061273600</max_bytes_to_merge_at_max_space_in_pool>
-        <number_of_free_entries_in_pool_to_execute_mutation>20</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_execute_mutation>8</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>8</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
         <max_suspicious_broken_parts>100</max_suspicious_broken_parts>
     </merge_tree>
 

@@ -1,0 +1,33 @@
+﻿=== Hunter Investigations ===
+Total rows: 0
+hostname	round(trigger_score, 4)	finding_type	round(confidence, 4)	length(correlated_events)	mitre_tactics
+
+=== Kafka hunter-results ===
+python : Traceback (most recent call last):
+At line:1 char:1
++ python C:\Users\saita\OneDrive\Desktop\cliff\scripts\check_hunter_res ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last) 
+   ::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File 
+"C:\Users\saita\OneDrive\Desktop\cliff\scripts\check_hunter_results.py", line 
+23, in <module>
+    r = subprocess.run(
+        ["docker", "exec", "clif-redpanda01", "rpk", "topic", "consume",
+         "hunter-results", "-o", "start", "--num", "30", "-f", "%v\n"],
+        capture_output=True, text=True, timeout=15)
+  File "C:\Program Files\Python313\Lib\subprocess.py", line 556, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\subprocess.py", line 1222, in 
+communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\subprocess.py", line 1646, in 
+_communicate
+    raise TimeoutExpired(self.args, orig_timeout)
+subprocess.TimeoutExpired: Command '['docker', 'exec', 'clif-redpanda01', 
+'rpk', 'topic', 'consume', 'hunter-results', '-o', 'start', '--num', '30', 
+'-f', '%v\n']' timed out after 15 seconds
