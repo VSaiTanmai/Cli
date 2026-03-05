@@ -485,11 +485,12 @@ class ScoreFusion:
             if ioc_match:
                 asset_multiplier = max(asset_multiplier, 1.5)
 
-            # ── Post-model adjusters (compensate for dead training features) ──
+            # ── Post-model adjusters ──────────────────────────────────
             score_boost = 0.0
 
-            # Template rarity: models trained with constant 0.5, so they
-            # can't use this signal. Rare templates boost the score.
+            # Template rarity: v4 model now has template_rarity as #1 feature
+            # (819K LightGBM gain), so the post-model boost is disabled (0.0).
+            # The conditional is kept for future use or IOC-like overrides.
             tmpl_rarity = float(feat.get("template_rarity", 0.5))
             if tmpl_rarity < config.TEMPLATE_RARITY_RARE_THRESHOLD:
                 # Linearly scale boost: rarity 0 → full boost, threshold → 0

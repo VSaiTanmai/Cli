@@ -1,35 +1,43 @@
 {
-  "version": "v3.0.0",
-  "trained_at": "2026-03-03T17:18:24Z",
+  "version": "v4.0.0",
+  "trained_at": "2026-03-05T19:34:01Z",
+  "v4_changes": {
+    "template_rarity": "Drain3-aligned simulation (beta distributions, attack-correlated)",
+    "event_freq_1m": "Production formula (60/duration_sec) for network, 0 for non-network",
+    "kdd_features": "NSL-KDD native; others use ConnectionTracker simulation",
+    "severity_numeric": "Discrete int 0-4 matching production _map_severity()",
+    "dns_exfil": "Treated as NON-NETWORK (matching raw-logs routing in Vector)",
+    "protocol": "Properly mapped from dataset columns (no more hardcoded 6)"
+  },
   "lgbm": {
-    "active": "v2.0.0",
-    "file": "lgbm_v2.0.0.onnx",
+    "active": "v3.0.0",
+    "file": "lgbm_v3.0.0.onnx",
     "metrics": {
-      "accuracy": 0.9615,
-      "precision": 0.9664,
-      "recall": 0.9608,
-      "f1": 0.9636
+      "accuracy": 0.9903,
+      "precision": 0.9922,
+      "recall": 0.9895,
+      "f1": 0.9908
     },
-    "best_iteration": 1000
+    "best_iteration": 901
   },
   "eif": {
-    "active": "v2.0.0",
-    "file": "eif_v2.0.0.pkl",
+    "active": "v3.0.0",
+    "file": "eif_v3.0.0.pkl",
     "calibration": {
-      "mean": 0.393821,
-      "std": 0.05784
+      "mean": 0.398157,
+      "std": 0.057881
     },
-    "threshold": 0.7402,
-    "discrimination_delta": -0.0379
+    "threshold": 0.7469,
+    "discrimination_delta": -0.1919
   },
   "arf": {
-    "active": "v2.0.0",
-    "file": "arf_v2.0.0.pkl",
+    "active": "v3.0.0",
+    "file": "arf_v3.0.0.pkl",
     "stream_csv": "features_arf_stream_features.csv"
   },
   "thresholds": {
-    "suspicious": 0.39,
-    "anomalous": 0.89
+    "suspicious": 0.19,
+    "anomalous": 0.94
   },
   "datasets": [
     "cicids2017",
@@ -46,18 +54,18 @@
     "hdfs"
   ],
   "dataset_fingerprints": {
-    "load_cicids2017": "90b8669c0fe3",
-    "load_nsl_kdd": "df25d4c497a2",
-    "load_unsw_nb15": "81b922c32c54",
-    "load_nf_unsw": "9c1027c55770",
-    "load_ton_iot": "24d1ebc37d42",
-    "load_csic2010": "cb2c6dc17836",
-    "load_evtx": "0a37c0a1eb4a",
-    "load_loghub_linux": "065d2d7e368d",
-    "load_loghub_apache": "edc2c52e6475",
-    "load_dns_exfil": "473eaf8b26d7",
-    "load_openssh": "3b4f442fc7a5",
-    "load_hdfs": "bd50e8ce2aaf"
+    "load_cicids2017": "6256ca6f8c5f",
+    "load_nsl_kdd": "995ede2c10e6",
+    "load_unsw_nb15": "02a6cf8a0988",
+    "load_nf_unsw": "07bd032f4c9c",
+    "load_ton_iot": "b258167132a1",
+    "load_csic2010": "0f8706c7dba8",
+    "load_evtx": "309fdac08421",
+    "load_loghub_linux": "fb2e6098452a",
+    "load_loghub_apache": "4f204cac5422",
+    "load_dns_exfil": "8a7485fd4e08",
+    "load_openssh": "d4fd87cdde4c",
+    "load_hdfs": "17d8954a61f8"
   },
   "feature_cols": [
     "hour_of_day",
@@ -83,7 +91,8 @@
   ],
   "label_leakage_prevention": {
     "severity_source": "original_log_level (source-system severity, not Vector classification)",
-    "network_datasets_severity": "random_normal(1.0, 0.5) \u2014 no inherent severity",
-    "log_datasets_severity": "content-keyword-based with Gaussian noise"
+    "network_datasets_severity": "random discrete 0-4 \u2014 no inherent severity",
+    "log_datasets_severity": "content-keyword-based with noise, discretized to int 0-4",
+    "template_rarity": "Drain3-aligned beta distributions (NOT label-dependent formula)"
   }
 }
