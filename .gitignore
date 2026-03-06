@@ -48,6 +48,8 @@ INDUSTRY_GAP_ANALYSIS.md
 docker_status.txt
 docker_ver.txt
 wsl_test.txt
+debug_output*.txt
+debug_raw*.txt
 
 # Vector config backups
 vector/*.backup*

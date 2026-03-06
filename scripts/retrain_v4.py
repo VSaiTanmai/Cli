@@ -79,19 +79,20 @@ DATASETS_DIR   = DATA_DIR / "datasets"
 NEW_DATA_DIR   = DATA_DIR / "New_Dataset"
 MODEL_DIR      = BASE_DIR / "agents" / "triage" / "models"
 
-# v4 model filenames
-LGBM_FILE = "lgbm_v3.0.0"        # .onnx and .txt
-EIF_FILE  = "eif_v3.0.0.pkl"
-ARF_FILE  = "arf_v3.0.0.pkl"
+# v6 model filenames (v5 = v4 + warmup guard; v6 = drop template_rarity)
+LGBM_FILE = "lgbm_v6.0.0"        # .onnx and .txt
+EIF_FILE  = "eif_v6.0.0.pkl"
+ARF_FILE  = "arf_v6.0.0.pkl"
 
 
 # ---------------------------------------------------------------------------
-#  20 canonical features (MUST match feature_extractor.py exactly)
+#  19 canonical features (v6: template_rarity REMOVED — unreliable in production)
+#  MUST match feature_extractor.py exactly
 # ---------------------------------------------------------------------------
 FEATURE_COLS = [
     "hour_of_day", "day_of_week", "severity_numeric", "source_type_numeric",
     "src_bytes", "dst_bytes", "event_freq_1m", "protocol", "dst_port",
-    "template_rarity", "threat_intel_flag", "duration",
+    "threat_intel_flag", "duration",
     "same_srv_rate", "diff_srv_rate", "serror_rate", "rerror_rate",
     "count", "srv_count", "dst_host_count", "dst_host_srv_count",
 ]
@@ -176,14 +177,19 @@ def _dataset_fingerprint(df: pd.DataFrame, name: str) -> str:
 def _sim_template_rarity(rng, n, labels):
     """Simulate production Drain3 template rarity values.
 
-    Production Drain3 formula:  rarity = 1.0 - (cluster_size / total_events)
-      - Common templates (normal traffic) → LOW rarity (near 0.0)
-      - Rare/novel templates (attacks)    → HIGH rarity (near 1.0)
+    Production Drain3 formula (v5 — log-scaled):
+        rarity = 1.0 - log(1 + cluster_size) / log(1 + total_events)
 
-    After warmup (steady-state):
-      - Normal events match well-known templates → rarity 0.01-0.30
-      - Attack events use novel patterns → rarity 0.40-0.99
-      - Overlap prevents overfitting on this single feature
+    This creates meaningful spread:
+      cluster=1,   total=100K → rarity ≈ 0.94 (truly rare)
+      cluster=100, total=100K → rarity ≈ 0.60 (moderate)
+      cluster=10K, total=100K → rarity ≈ 0.20 (common)
+      cluster=50K, total=100K → rarity ≈ 0.06 (very common)
+
+    Simulation: sample cluster_size from realistic distributions,
+    then apply the exact production formula.
+      - Normal events match well-known templates (large clusters)
+      - Attack events use novel/rare templates (small clusters)
     """
     is_attack = np.asarray(labels) == 1
     rarity = np.empty(n, dtype=np.float64)
@@ -191,15 +197,21 @@ def _sim_template_rarity(rng, n, labels):
     n_benign = int((~is_attack).sum())
     n_attack = int(is_attack.sum())
 
+    # Simulate a realistic total_events count for a running SIEM
+    total_events = 100_000  # steady-state after warmup
+    log_total = np.log(1.0 + total_events)
+
     if n_benign > 0:
-        # Benign: mostly common templates → low rarity
-        # beta(1.5, 8) → mean ≈ 0.16, 95th percentile ≈ 0.40
-        rarity[~is_attack] = rng.beta(1.5, 8.0, n_benign)
+        # Benign: mostly common templates with large cluster sizes
+        # lognormal(8.5, 1.5) → median ≈ 5000, spread from 500 to 50000+
+        cluster_sizes = np.clip(rng.lognormal(8.5, 1.5, n_benign), 1, total_events)
+        rarity[~is_attack] = 1.0 - np.log(1.0 + cluster_sizes) / log_total
 
     if n_attack > 0:
-        # Attack: mostly novel templates → high rarity
-        # beta(4, 2) → mean ≈ 0.67, 5th percentile ≈ 0.30
-        rarity[is_attack] = rng.beta(4.0, 2.0, n_attack)
+        # Attack: mostly novel templates with small cluster sizes
+        # lognormal(2.0, 1.8) → median ≈ 7, spread from 1 to ~500
+        cluster_sizes = np.clip(rng.lognormal(2.0, 1.8, n_attack), 1, total_events)
+        rarity[is_attack] = 1.0 - np.log(1.0 + cluster_sizes) / log_total
 
     return np.clip(rarity, 0.0, 1.0)
 
@@ -1241,8 +1253,10 @@ def build_combined_dataset():
     df["src_bytes"]  = df["src_bytes"].clip(0, 1e9)
     df["dst_bytes"]  = df["dst_bytes"].clip(0, 1e9)
     df["dst_port"]   = df["dst_port"].clip(0, 65535)
-    for col in ["same_srv_rate", "diff_srv_rate", "serror_rate", "rerror_rate", "template_rarity"]:
+    for col in ["same_srv_rate", "diff_srv_rate", "serror_rate", "rerror_rate"]:
         df[col] = df[col].clip(0.0, 1.0)
+    if "template_rarity" in df.columns:
+        df["template_rarity"] = df["template_rarity"].clip(0.0, 1.0)
 
     df["label"] = pd.to_numeric(df["label"], errors="coerce").fillna(0).astype(int).clip(0, 1)
     df["attack_type"] = df["attack_type"].fillna("unknown")
@@ -1260,20 +1274,23 @@ def build_combined_dataset():
     log.info("Attack types:   %d unique: %s", df["attack_type"].nunique(), sorted(df["attack_type"].unique()))
     log.info("Source types:   %s", sorted(df["source_type_numeric"].unique().tolist()))
 
-    # ---- v4: template_rarity distribution check ----
-    log.info("\nTemplate rarity validation (v4 — Drain3 aligned):")
-    for ds in sorted(df["source_dataset"].unique()):
-        ds_df = df[df["source_dataset"] == ds]
-        tr_n = ds_df.loc[ds_df["label"] == 0, "template_rarity"]
-        tr_a = ds_df.loc[ds_df["label"] == 1, "template_rarity"]
-        n_mean = tr_n.mean() if len(tr_n) > 0 else 0
-        a_mean = tr_a.mean() if len(tr_a) > 0 else 0
-        delta  = a_mean - n_mean
-        status = "OK" if delta > 0.2 else "WARN (weak signal)"
-        log.info(
-            "  %-20s: normal_tr=%.3f, attack_tr=%.3f, delta=%+.3f [%s]",
-            ds, n_mean, a_mean, delta, status,
-        )
+    # ---- v6: template_rarity removed from model features ----
+    if "template_rarity" in df.columns:
+        log.info("\nTemplate rarity validation (v4 — Drain3 aligned):")
+        for ds in sorted(df["source_dataset"].unique()):
+            ds_df = df[df["source_dataset"] == ds]
+            tr_n = ds_df.loc[ds_df["label"] == 0, "template_rarity"]
+            tr_a = ds_df.loc[ds_df["label"] == 1, "template_rarity"]
+            n_mean = tr_n.mean() if len(tr_n) > 0 else 0
+            a_mean = tr_a.mean() if len(tr_a) > 0 else 0
+            delta  = a_mean - n_mean
+            status = "OK" if delta > 0.2 else "WARN (weak signal)"
+            log.info(
+                "  %-20s: normal_tr=%.3f, attack_tr=%.3f, delta=%+.3f [%s]",
+                ds, n_mean, a_mean, delta, status,
+            )
+    else:
+        log.info("\nTemplate rarity: REMOVED from v6 features (19 features)")
 
     # ---- Per-dataset severity leakage check ----
     log.info("\nSeverity validation per dataset (checking for label leakage):")
@@ -1720,10 +1737,11 @@ ALL_DATASETS = [
 
 def save_manifest(thresholds, eif_stats, lgbm_stats, fingerprints):
     manifest = {
-        "version": "v4.0.0",
+        "version": "v6.0.0",
         "trained_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "v4_changes": {
-            "template_rarity": "Drain3-aligned simulation (beta distributions, attack-correlated)",
+        "v6_changes": {
+            "template_rarity": "REMOVED from features — unreliable in production (Drain3 state-dependent)",
+            "feature_count": "19 (was 20)",
             "event_freq_1m": "Production formula (60/duration_sec) for network, 0 for non-network",
             "kdd_features": "NSL-KDD native; others use ConnectionTracker simulation",
             "severity_numeric": "Discrete int 0-4 matching production _map_severity()",
