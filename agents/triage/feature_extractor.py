@@ -1,16 +1,20 @@
 """
 CLIF Triage Agent — Feature Extractor
 ========================================
-Extracts the 20 canonical features from CLIF pipeline events.
+Extracts the 19 canonical features from CLIF pipeline events (v6).
 
-The same 20 features are used by all three models (LightGBM, EIF, ARF).
+The same 19 features are used by all three models (LightGBM, EIF, ARF).
 Feature ordering must exactly match the training-time feature_cols.pkl.
 
-Features 13-20 (same_srv_rate through dst_host_srv_count) are KDD-style
-time-window aggregation features. For network events, these are computed
-from a real-time sliding-window connection tracker. For non-network events
-(syslog, Windows, K8s, etc.), these are correctly set to 0 — matching the
-training data where non-network log types had no aggregation features.
+Features 12-19 (same_srv_rate through dst_host_srv_count) are KDD-style
+time-window aggregation features. For network events (including security
+events with embedded network data), these are computed from a real-time
+sliding-window connection tracker.  For pure non-network events (syslog,
+Windows, K8s, etc.), these are correctly set to 0.
+
+Security events (ids_ips, firewall) carry network fields inside the
+description/message_body text.  A regex parser extracts src_ip, dst_ip,
+dst_port, proto, bytes so the connection tracker can operate on them.
 
 The ConnectionTracker implements the standard 2-second time window and
 100-connection host window used in the original KDD99 feature engineering.
@@ -19,6 +23,7 @@ The ConnectionTracker implements the standard 2-second time window and
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections import defaultdict, deque
@@ -34,6 +39,9 @@ from drain3_miner import Drain3Miner
 logger = logging.getLogger("clif.triage.features")
 
 # ── Canonical feature order (must match feature_cols.pkl) ────────────────────
+# v6: template_rarity REMOVED from model features (unreliable in production).
+#     It's still computed by Drain3 for metadata/ClickHouse, just not fed to
+#     LGBM/EIF/ARF via batch_to_numpy().
 
 FEATURE_NAMES = [
     "hour_of_day",
@@ -45,7 +53,6 @@ FEATURE_NAMES = [
     "event_freq_1m",
     "protocol",
     "dst_port",
-    "template_rarity",
     "threat_intel_flag",
     "duration",
     "same_srv_rate",
@@ -266,10 +273,24 @@ class FeatureExtractor:
             topic: Source topic name (determines event schema).
 
         Returns:
-            Dict with 20 features + metadata (template_id, template_str).
+            Dict with 19 features + metadata (template_id, template_str).
         """
         is_network = topic == "network-events"
         is_security = topic == "security-events"
+
+        # ── Parse embedded network fields from security event text ───────
+        # Security events (ids_ips, firewall) carry network data inside
+        # the description/message_body.  Extract structured fields so we
+        # can populate byte counts and connection-tracker features.
+        _parsed_net: Dict[str, Any] = {}
+        if is_security:
+            desc = event.get("description", event.get("message_body", ""))
+            _parsed_net = self._parse_network_from_text(str(desc))
+
+        # Treat security events WITH parsed network data as network-like
+        has_network_data = is_network or bool(
+            _parsed_net.get("src_ip") and _parsed_net.get("dst_ip")
+        )
 
         # ── Feature 1-2: Temporal ────────────────────────────────────────
         ts = self._parse_timestamp(event.get("timestamp"))
@@ -302,10 +323,18 @@ class FeatureExtractor:
         if is_network:
             src_bytes = float(event.get("bytes_sent", 0))
             dst_bytes = float(event.get("bytes_received", 0))
+        elif _parsed_net.get("bytes_sent") is not None:
+            # Security event with parsed network bytes
+            src_bytes = float(_parsed_net.get("bytes_sent", 0))
+            dst_bytes = float(_parsed_net.get("bytes_received", 0))
+        elif has_network_data:
+            # Security event with parsed IPs but NO parsed byte counts.
+            # Use 0 instead of message length — matches training data where
+            # network connections without byte info had 0 bytes.
+            src_bytes = 0.0
+            dst_bytes = 0.0
         else:
             # For non-network events, estimate from message length.
-            # Vector CCS outputs message_body for all types, but only
-            # raw-logs have a top-level "message" field.
             msg = event.get("message", event.get("message_body",
                             event.get("description", "")))
             src_bytes = float(len(str(msg))) if msg else 0.0
@@ -328,11 +357,16 @@ class FeatureExtractor:
             event_freq_1m = 0.0
 
         # ── Feature 8: Protocol ─────────────────────────────────────────
-        proto_raw = event.get("protocol", "tcp")
+        proto_raw = event.get("protocol",
+                              _parsed_net.get("protocol", "tcp"))
         protocol = config.PROTOCOL_MAP.get(str(proto_raw).lower(), 6)
 
         # ── Feature 9: Destination Port ─────────────────────────────────
-        dst_port = self._safe_float(event.get("dst_port", event.get("dest_port", 0)))
+        dst_port = self._safe_float(
+            event.get("dst_port",
+                       event.get("dest_port",
+                                 _parsed_net.get("dst_port", 0)))
+        )
 
         # ── Feature 10: Template Rarity (Drain3) ────────────────────────
         message_body = event.get("message_body", event.get("message", ""))
@@ -350,21 +384,28 @@ class FeatureExtractor:
         # ── Feature 11: Threat Intel Flag ───────────────────────────────
         threat_intel_flag = 0
         if self._ioc_lookup is not None:
-            # Check source and destination IPs
-            src_ip = event.get("src_ip", event.get("ip_address", ""))
-            dst_ip = event.get("dst_ip", "")
-            if src_ip and self._ioc_lookup(str(src_ip)):
+            # Check source and destination IPs (structured or parsed)
+            src_ip_ioc = event.get("src_ip",
+                                   _parsed_net.get("src_ip",
+                                                   event.get("ip_address", "")))
+            dst_ip_ioc = event.get("dst_ip",
+                                   _parsed_net.get("dst_ip", ""))
+            if src_ip_ioc and self._ioc_lookup(str(src_ip_ioc)):
                 threat_intel_flag = 1
-            elif dst_ip and self._ioc_lookup(str(dst_ip)):
+            elif dst_ip_ioc and self._ioc_lookup(str(dst_ip_ioc)):
                 threat_intel_flag = 1
 
         # ── Feature 12: Duration ────────────────────────────────────────
         duration = duration_sec
 
-        # ── Features 13-20: KDD Aggregation Features ────────────────────
-        if is_network:
-            src_ip = str(event.get("src_ip", "0.0.0.0"))
-            dst_ip = str(event.get("dst_ip", "0.0.0.0"))
+        # ── Features 12-19: KDD Aggregation Features ────────────────────
+        if has_network_data:
+            # Use structured fields for network-events, parsed fields for
+            # security events with embedded network data.
+            src_ip = str(event.get("src_ip",
+                                   _parsed_net.get("src_ip", "0.0.0.0")))
+            dst_ip = str(event.get("dst_ip",
+                                   _parsed_net.get("dst_ip", "0.0.0.0")))
             dst_port_int = int(dst_port)
             service = self._port_to_service(dst_port_int)
 
@@ -421,7 +462,6 @@ class FeatureExtractor:
             "event_freq_1m": event_freq_1m,
             "protocol": float(protocol),
             "dst_port": dst_port,
-            "template_rarity": template_rarity,
             "threat_intel_flag": float(threat_intel_flag),
             "duration": duration,
             "same_srv_rate": agg["same_srv_rate"],
@@ -437,6 +477,7 @@ class FeatureExtractor:
         # Attach metadata for downstream use (not fed to models)
         features["_template_id"] = template_id
         features["_template_str"] = template_str
+        features["_template_rarity"] = template_rarity  # for replay buffer / diagnostics
         features["_source_type"] = str(source_type_raw)
         features["_topic"] = topic
 
@@ -536,3 +577,65 @@ class FeatureExtractor:
             "feature_count": len(FEATURE_NAMES),
             "ioc_lookup_enabled": self._ioc_lookup is not None,
         }
+
+    # ── Compiled regexes for network field extraction from text ──────────
+    # Patterns match formats emitted by the Vector CCS pipeline for
+    # security events with embedded network information.
+    _RE_IP_PORT_ARROW = re.compile(
+        r"(\d+\.\d+\.\d+\.\d+):(\d+)\s*(?:→|->)\s*(\d+\.\d+\.\d+\.\d+):(\d+)"
+    )
+    _RE_SRC_IP   = re.compile(r"\bsrc=(\d+\.\d+\.\d+\.\d+)")
+    _RE_DST_IP   = re.compile(r"\bdst=(\d+\.\d+\.\d+\.\d+)")
+    _RE_DST_PORT = re.compile(r"\bdst=\d+\.\d+\.\d+\.\d+:(\d+)")
+    _RE_PROTO    = re.compile(r"\bproto=(\w+)", re.IGNORECASE)
+    _RE_BYTES_SENT = re.compile(r"\b(?:bytes_sent|src_bytes)=(\d+)")
+    _RE_BYTES_RECV = re.compile(r"\b(?:bytes_recv|dst_bytes)=(\d+)")
+    _RE_SRC_PORT   = re.compile(r"\bsrc=\d+\.\d+\.\d+\.\d+:(\d+)")
+
+    @classmethod
+    def _parse_network_from_text(cls, text: str) -> Dict[str, Any]:
+        """Extract network fields from description/message_body text.
+
+        Returns dict that may contain: src_ip, dst_ip, dst_port, src_port,
+        protocol, bytes_sent, bytes_received.  Missing fields are omitted.
+        """
+        result: Dict[str, Any] = {}
+        if not text:
+            return result
+
+        # Try "IP:PORT → IP:PORT" pattern first (firewall format)
+        m = cls._RE_IP_PORT_ARROW.search(text)
+        if m:
+            result["src_ip"] = m.group(1)
+            result["src_port"] = int(m.group(2))
+            result["dst_ip"] = m.group(3)
+            result["dst_port"] = int(m.group(4))
+        else:
+            # Try "src=IP dst=IP:PORT" pattern (IDS format)
+            ms = cls._RE_SRC_IP.search(text)
+            if ms:
+                result["src_ip"] = ms.group(1)
+            md = cls._RE_DST_IP.search(text)
+            if md:
+                result["dst_ip"] = md.group(1)
+            mp = cls._RE_DST_PORT.search(text)
+            if mp:
+                result["dst_port"] = int(mp.group(1))
+            msp = cls._RE_SRC_PORT.search(text)
+            if msp:
+                result["src_port"] = int(msp.group(1))
+
+        # Protocol
+        mp = cls._RE_PROTO.search(text)
+        if mp:
+            result["protocol"] = mp.group(1).lower()
+
+        # Bytes
+        mb_s = cls._RE_BYTES_SENT.search(text)
+        if mb_s:
+            result["bytes_sent"] = int(mb_s.group(1))
+        mb_r = cls._RE_BYTES_RECV.search(text)
+        if mb_r:
+            result["bytes_received"] = int(mb_r.group(1))
+
+        return result

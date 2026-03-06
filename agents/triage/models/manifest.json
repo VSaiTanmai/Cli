@@ -1,8 +1,9 @@
 {
-  "version": "v4.0.0",
-  "trained_at": "2026-03-05T19:34:01Z",
-  "v4_changes": {
-    "template_rarity": "Drain3-aligned simulation (beta distributions, attack-correlated)",
+  "version": "v6.0.0",
+  "trained_at": "2026-03-05T21:21:49Z",
+  "v6_changes": {
+    "template_rarity": "REMOVED from features \u2014 unreliable in production (Drain3 state-dependent)",
+    "feature_count": "19 (was 20)",
     "event_freq_1m": "Production formula (60/duration_sec) for network, 0 for non-network",
     "kdd_features": "NSL-KDD native; others use ConnectionTracker simulation",
     "severity_numeric": "Discrete int 0-4 matching production _map_severity()",
@@ -11,33 +12,33 @@
   },
   "lgbm": {
     "active": "v3.0.0",
-    "file": "lgbm_v3.0.0.onnx",
+    "file": "lgbm_v6.0.0.onnx",
     "metrics": {
-      "accuracy": 0.9903,
-      "precision": 0.9922,
-      "recall": 0.9895,
-      "f1": 0.9908
+      "accuracy": 0.9458,
+      "precision": 0.9848,
+      "recall": 0.9117,
+      "f1": 0.9469
     },
-    "best_iteration": 901
+    "best_iteration": 1000
   },
   "eif": {
     "active": "v3.0.0",
-    "file": "eif_v3.0.0.pkl",
+    "file": "eif_v6.0.0.pkl",
     "calibration": {
-      "mean": 0.398157,
-      "std": 0.057881
+      "mean": 0.398321,
+      "std": 0.058036
     },
-    "threshold": 0.7469,
-    "discrimination_delta": -0.1919
+    "threshold": 0.7452,
+    "discrimination_delta": -0.1624
   },
   "arf": {
     "active": "v3.0.0",
-    "file": "arf_v3.0.0.pkl",
+    "file": "arf_v6.0.0.pkl",
     "stream_csv": "features_arf_stream_features.csv"
   },
   "thresholds": {
-    "suspicious": 0.19,
-    "anomalous": 0.94
+    "suspicious": 0.39,
+    "anomalous": 0.92
   },
   "datasets": [
     "cicids2017",
@@ -54,18 +55,18 @@
     "hdfs"
   ],
   "dataset_fingerprints": {
-    "load_cicids2017": "6256ca6f8c5f",
-    "load_nsl_kdd": "995ede2c10e6",
-    "load_unsw_nb15": "02a6cf8a0988",
-    "load_nf_unsw": "07bd032f4c9c",
-    "load_ton_iot": "b258167132a1",
-    "load_csic2010": "0f8706c7dba8",
-    "load_evtx": "309fdac08421",
-    "load_loghub_linux": "fb2e6098452a",
-    "load_loghub_apache": "4f204cac5422",
-    "load_dns_exfil": "8a7485fd4e08",
-    "load_openssh": "d4fd87cdde4c",
-    "load_hdfs": "17d8954a61f8"
+    "load_cicids2017": "da49da2ce2c2",
+    "load_nsl_kdd": "e9aabc146e19",
+    "load_unsw_nb15": "2ad52349ca2d",
+    "load_nf_unsw": "8bb44021ca69",
+    "load_ton_iot": "ecdf02181e23",
+    "load_csic2010": "0e07c05e945e",
+    "load_evtx": "b825be08a200",
+    "load_loghub_linux": "7ebd78fa840f",
+    "load_loghub_apache": "e6d5a2c1979b",
+    "load_dns_exfil": "d09ee296ad49",
+    "load_openssh": "2e1f6f3ccb5b",
+    "load_hdfs": "84fb3d009a90"
   },
   "feature_cols": [
     "hour_of_day",
@@ -77,7 +78,6 @@
     "event_freq_1m",
     "protocol",
     "dst_port",
-    "template_rarity",
     "threat_intel_flag",
     "duration",
     "same_srv_rate",

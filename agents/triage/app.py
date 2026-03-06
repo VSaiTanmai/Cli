@@ -170,10 +170,11 @@ def check_kafka_health() -> bool:
 
 def create_consumer() -> Consumer:
     """Create a Kafka consumer subscribed to the input topics."""
+    offset_reset = os.environ.get("KAFKA_OFFSET_RESET", "latest")
     conf = {
         "bootstrap.servers": config.KAFKA_BROKERS,
         "group.id": config.CONSUMER_GROUP_ID,
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": offset_reset,
         "enable.auto.commit": True,
         "auto.commit.interval.ms": 5000,
         "max.poll.interval.ms": 300000,
@@ -467,12 +468,26 @@ class TriageProcessor:
 
         # ── Step 2: Model inference ─────────────────────────────────────
         X = self._extractor.batch_to_numpy(features_list)
+
+        # Shape guard: if the feature matrix has wrong width, try per-event
+        expected_cols = len(FEATURE_NAMES)
+        if X.ndim != 2 or X.shape[1] != expected_cols:
+            logger.error(
+                "Batch X shape mismatch: got %s, expected (N, %d). "
+                "Falling back to single-event inference.",
+                X.shape, expected_cols,
+            )
+            return self._process_batch_single(features_list, valid_indices, events)
+
         try:
             model_scores = self._ensemble.predict_batch(X)
         except Exception as e:
-            self._errors += len(features_list)
-            logger.error("Model inference failed: %s", e, exc_info=True)
-            return []
+            logger.error(
+                "Batch inference failed (X.shape=%s): %s — "
+                "falling back to single-event inference.",
+                X.shape, e,
+            )
+            return self._process_batch_single(features_list, valid_indices, events)
 
         # ── Step 3: Score fusion + routing ──────────────────────────────
         valid_events = [events[i] for i in valid_indices]
@@ -504,6 +519,51 @@ class TriageProcessor:
             )
 
         return results
+
+    def _process_batch_single(
+        self,
+        features_list: List[Dict[str, Any]],
+        valid_indices: List[int],
+        events: List[Dict[str, Any]],
+    ) -> List[TriageResult]:
+        """
+        Per-event fallback when batch inference fails.
+        Processes each event individually so a single bad event doesn't
+        silently drop the entire batch.
+        """
+        all_results: List[TriageResult] = []
+        ok = 0
+        fail = 0
+
+        for idx, feat in enumerate(features_list):
+            try:
+                X_single = np.array(
+                    [[feat[name] for name in FEATURE_NAMES]], dtype=np.float32,
+                )
+                X_single = np.nan_to_num(X_single, nan=0.0, posinf=1e9, neginf=-1e9)
+
+                if X_single.shape[1] != len(FEATURE_NAMES):
+                    fail += 1
+                    continue
+
+                scores = self._ensemble.predict_batch(X_single)
+                orig_idx = valid_indices[idx]
+                ev = events[orig_idx]
+                result = self._fusion.fuse_batch(scores, [feat], [ev])
+                if result:
+                    all_results.extend(result)
+                    ok += 1
+            except Exception as e:
+                fail += 1
+                if fail <= 3:
+                    logger.warning("Single-event inference failed (idx=%d): %s", idx, e)
+
+        self._errors += fail
+        logger.info(
+            "Single-event fallback: %d/%d succeeded, %d failed",
+            ok, ok + fail, fail,
+        )
+        return all_results
 
     def _write_replay_buffer(
         self,
