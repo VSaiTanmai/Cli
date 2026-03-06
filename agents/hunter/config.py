@@ -51,7 +51,7 @@ CLICKHOUSE_DATABASE: str = _env("CLICKHOUSE_DATABASE", "clif_logs")
 # ---------------------------------------------------------------------------
 # LanceDB HTTP service
 # ---------------------------------------------------------------------------
-LANCEDB_URL: str = _env("LANCEDB_URL", "http://lancedb-service:8100")
+LANCEDB_URL: str = _env("LANCEDB_URL", "http://lancedb:8100")
 LANCEDB_TIMEOUT_SEC: float = _float("LANCEDB_TIMEOUT_SEC", 5.0)
 LANCEDB_BACKOFF_SEC: float = _float("LANCEDB_BACKOFF_SEC", 2.0)
 LANCEDB_CIRCUIT_THRESHOLD: int = _int("LANCEDB_CIRCUIT_THRESHOLD", 3)
@@ -65,8 +65,10 @@ LOG_LEVEL: str = _env("LOG_LEVEL", "INFO")
 # ---------------------------------------------------------------------------
 # Investigation
 # ---------------------------------------------------------------------------
-# Minimum triage adjusted_score to pass secondary gate
-HUNTER_SCORE_GATE: float = _float("HUNTER_SCORE_GATE", 0.65)
+# Minimum triage adjusted_score to pass secondary gate.
+# Must match or be ≤ triage DEFAULT_ANOMALOUS_THRESHOLD (0.70) to avoid
+# a "dead zone" where events are escalated by triage but dropped by Hunter.
+HUNTER_SCORE_GATE: float = _float("HUNTER_SCORE_GATE", 0.70)
 # Look-back window for temporal correlation (minutes)
 INVESTIGATION_WINDOW_MIN: int = _int("INVESTIGATION_WINDOW_MIN", 15)
 BATCH_SIZE: int = _int("BATCH_SIZE", 100)

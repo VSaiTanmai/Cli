@@ -292,10 +292,10 @@ services:
       MODEL_ARF_CHECKPOINT: /models/arf_v2.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # ── Scoring (v4 inference-aligned) ──
-      SCORE_WEIGHTS: "lgbm=0.60,eif=0.15,arf=0.25"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
+      # ── Scoring (v5 — LGBM-dominant, 2026-03-05) ──
+      SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.35"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.78"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
@@ -385,9 +385,9 @@ services:
       MODEL_ARF_CHECKPOINT: /models/arf_v2.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      SCORE_WEIGHTS: "lgbm=0.60,eif=0.15,arf=0.25"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
+      SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.35"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.78"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"

@@ -44,23 +44,24 @@ DRAIN3_CONFIG_PATH = os.getenv("DRAIN3_CONFIG_PATH", "/app/drain3.ini")
 # ── Models ──────────────────────────────────────────────────────────────────
 
 MODEL_DIR = os.getenv("MODEL_DIR", "/models")
-MODEL_LGBM_PATH = os.getenv("MODEL_LGBM_PATH", "/models/lgbm_v2.0.0.onnx")
-MODEL_EIF_PATH = os.getenv("MODEL_EIF_PATH", "/models/eif_v2.0.0.pkl")
+MODEL_LGBM_PATH = os.getenv("MODEL_LGBM_PATH", "/models/lgbm_v3.0.0.onnx")
+MODEL_EIF_PATH = os.getenv("MODEL_EIF_PATH", "/models/eif_v3.0.0.pkl")
 MODEL_EIF_THRESHOLD_PATH = os.getenv(
     "MODEL_EIF_THRESHOLD_PATH", "/models/eif_threshold.npy"
 )
 MODEL_EIF_CALIBRATION_PATH = os.getenv(
     "MODEL_EIF_CALIBRATION_PATH", "/models/eif_calibration.npz"
 )
-MODEL_ARF_CHECKPOINT = os.getenv("MODEL_ARF_CHECKPOINT", "/models/arf_v2.0.0.pkl")
+MODEL_ARF_CHECKPOINT = os.getenv("MODEL_ARF_CHECKPOINT", "/models/arf_v3.0.0.pkl")
 FEATURE_COLS_PATH = os.getenv("FEATURE_COLS_PATH", "/models/feature_cols.pkl")
 MANIFEST_PATH = os.getenv("MANIFEST_PATH", "/models/manifest.json")
 
 # ── Score Weights ───────────────────────────────────────────────────────────
 
-# v2 weights: LightGBM dominates, EIF reduced (inverted discrimination
-# corrected via score_flip), ARF increased (now functional with delta=0.62).
-_raw_weights = os.getenv("SCORE_WEIGHTS", "lgbm=0.60,eif=0.15,arf=0.25")
+# v5 weights: LGBM dominant (best discriminator), EIF/ARF reduced.
+# ARF outputs near-constant 0.75 (narrow-band), EIF spread only ~0.20.
+# Increasing LGBM from 0.60→0.80 restores signal spread from 0.56→0.75.
+_raw_weights = os.getenv("SCORE_WEIGHTS", "lgbm=0.80,eif=0.12,arf=0.08")
 SCORE_WEIGHTS = {}
 for pair in _raw_weights.split(","):
     k, v = pair.split("=")
@@ -68,16 +69,19 @@ for pair in _raw_weights.split(","):
 
 # ── Thresholds ──────────────────────────────────────────────────────────────
 
-# v3.0 thresholds — retrained 2026-03-03, 12 datasets, 175K rows.
-# F1=0.9704, AUC=0.9960, Acc=0.9685, 1000 iterations (GPU).
-# Weights: LGBM=0.60, EIF=0.15(flipped), ARF=0.25.
-# v4.0 (inference-aligned): suspicious=0.39 → detect=97.5%, FPR=4.90%
-# anomalous=0.89  → detect=44.4%, FPR=0.08%
+# v7.0 thresholds — calibrated 2026-03-06 from retrain_v4.py
+# (production-aligned features, 175,478 samples, 12 datasets, F1=0.9908).
+# Training score distributions:
+#   Normal:    mean=0.1085  p95=0.1888  p99=0.3947
+#   Malicious: mean=0.9241  p25=0.8874  p50=0.9368
+# suspicious=0.19 → detect=99.6%, FPR=4.66%  (≈ normal p95)
+# anomalous=0.70  → catch ~95%+ attacks, ~0% FPR  (between normal p99
+#   and malicious p25; all per-source malicious means are 0.80–0.98).
 DEFAULT_SUSPICIOUS_THRESHOLD = float(
-    os.getenv("DEFAULT_SUSPICIOUS_THRESHOLD", "0.39")
+    os.getenv("DEFAULT_SUSPICIOUS_THRESHOLD", "0.19")
 )
 DEFAULT_ANOMALOUS_THRESHOLD = float(
-    os.getenv("DEFAULT_ANOMALOUS_THRESHOLD", "0.89")
+    os.getenv("DEFAULT_ANOMALOUS_THRESHOLD", "0.70")
 )
 DISAGREEMENT_THRESHOLD = float(os.getenv("DISAGREEMENT_THRESHOLD", "0.30"))
 
@@ -131,17 +135,16 @@ ARF_PSEUDO_LABEL_HIGH = float(os.getenv("ARF_PSEUDO_LABEL_HIGH", "0.80"))
 ARF_PSEUDO_LABEL_LOW = float(os.getenv("ARF_PSEUDO_LABEL_LOW", "0.20"))
 
 # ── Template Rarity & IOC Post-Model Boost ──────────────────────────────────
-# v2 training data now includes VARYING template_rarity for EVTX, CSIC, and
-# Loghub datasets (LightGBM feature importance: #2 at 9688 gain).
-# threat_intel_flag remains 0 in training, so IOC boost is still applied
-# post-model. Template rarity boost is kept for additional runtime signal.
-# Rare templates (< RARE_THRESHOLD) and IOC matches boost the score by up to
-# BOOST_MAX_PCT percent.
+# v4 training: template_rarity is now the #1 LightGBM feature (819K gain),
+# properly correlated with Drain3 semantics (benign→low, attack→high).
+# Post-model boost is DISABLED (0.0) to avoid double-counting — the model
+# already fully incorporates template_rarity signal during inference.
+# threat_intel_flag remains 0 in training, so IOC boost is still needed.
 TEMPLATE_RARITY_RARE_THRESHOLD = float(
     os.getenv("TEMPLATE_RARITY_RARE_THRESHOLD", "0.15")
 )
 TEMPLATE_RARITY_BOOST_MAX = float(
-    os.getenv("TEMPLATE_RARITY_BOOST_MAX", "0.10")
+    os.getenv("TEMPLATE_RARITY_BOOST_MAX", "0.0")
 )
 IOC_MATCH_SCORE_BOOST = float(os.getenv("IOC_MATCH_SCORE_BOOST", "0.15"))
 

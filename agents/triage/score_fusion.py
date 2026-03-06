@@ -81,20 +81,27 @@ class SourceThresholdCache:
         self._lock = threading.Lock()
         self._last_refresh = 0.0
 
-    def get_thresholds(self, source_type: str) -> Tuple[float, float]:
+    def get_thresholds(
+        self, source_type: str, topic: str = ""
+    ) -> Tuple[float, float]:
         """
-        Get (suspicious_threshold, anomalous_threshold) for a source type.
-        Falls back to global defaults if source not cached.
+        Get (suspicious_threshold, anomalous_threshold) for a source.
+        Lookup priority: topic → source_type → global defaults.
+
+        Topic-based lookup is preferred because Vector's source_type field
+        is often a generic collector name (e.g. "socket") that doesn't
+        differentiate log types.  The Redpanda topic (raw-logs, security-
+        events, process-events, network-events) is a reliable indicator.
         """
         self._maybe_refresh()
+        defaults = (
+            config.DEFAULT_SUSPICIOUS_THRESHOLD,
+            config.DEFAULT_ANOMALOUS_THRESHOLD,
+        )
         with self._lock:
-            return self._cache.get(
-                source_type,
-                (
-                    config.DEFAULT_SUSPICIOUS_THRESHOLD,
-                    config.DEFAULT_ANOMALOUS_THRESHOLD,
-                ),
-            )
+            if topic and topic in self._cache:
+                return self._cache[topic]
+            return self._cache.get(source_type, defaults)
 
     def _maybe_refresh(self) -> None:
         now = time.monotonic()
@@ -478,11 +485,12 @@ class ScoreFusion:
             if ioc_match:
                 asset_multiplier = max(asset_multiplier, 1.5)
 
-            # ── Post-model adjusters (compensate for dead training features) ──
+            # ── Post-model adjusters ──────────────────────────────────
             score_boost = 0.0
 
-            # Template rarity: models trained with constant 0.5, so they
-            # can't use this signal. Rare templates boost the score.
+            # Template rarity: v4 model now has template_rarity as #1 feature
+            # (819K LightGBM gain), so the post-model boost is disabled (0.0).
+            # The conditional is kept for future use or IOC-like overrides.
             tmpl_rarity = float(feat.get("template_rarity", 0.5))
             if tmpl_rarity < config.TEMPLATE_RARITY_RARE_THRESHOLD:
                 # Linearly scale boost: rarity 0 → full boost, threshold → 0
@@ -509,10 +517,11 @@ class ScoreFusion:
                     adjusted = floor
                     eif_override_applied = 1
 
-            # ── Per-source thresholds ───────────────────────────────────
+            # ── Per-source thresholds (topic → source_type → global) ──
+            topic = str(feat.get("_topic", ""))
             if self._source_thresholds:
                 suspicious_th, anomalous_th = self._source_thresholds.get_thresholds(
-                    source_type
+                    source_type, topic=topic
                 )
             else:
                 suspicious_th = config.DEFAULT_SUSPICIOUS_THRESHOLD
