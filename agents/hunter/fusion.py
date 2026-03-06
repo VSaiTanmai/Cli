@@ -5,20 +5,22 @@ Takes the combined output from all L1/L2 threads, builds the 42-dim
 feature vector, and derives the final hunter_score plus finding_type
 using the 9-cell decision table from the plan.
 
-Decision matrix (v2 – lowered thresholds for heuristic cold-start):
-  ┌────────────────────┬──────────────────┬─────────────────────────────┐
-  │  Sigma layer       │  SPC layer       │  ML layer outcome            │
-  ├────────────────────┼──────────────────┼─────────────────────────────┤
-  │  hit ≥ HIGH        │  any             │ → CONFIRMED_ATTACK (fast)    │
-  │  hit (any)         │  anomaly=True    │ → CONFIRMED_ATTACK            │
-  │  hit (any)         │  anomaly=False   │ → BEHAVIOURAL_ANOMALY         │
-  │  no hit            │  anomaly=True    │ score ≥ .42 → CONFIRMED       │
-  │  no hit            │  anomaly=True    │ score < .42 → ANOMALOUS_PAT   │
-  │  no hit            │  anomaly=False   │ score ≥ .50 → CONFIRMED       │
-  │  no hit            │  anomaly=False   │ .33 ≤ score < .50 → BEHAV     │
-  │  no hit            │  anomaly=False   │ score < .33 → NORMAL          │
-  │  campaign=True     │  any             │ → ACTIVE_CAMPAIGN (override)  │
-  └────────────────────┴──────────────────┴─────────────────────────────┘
+Decision matrix (v3 – adds triage-confidence tier):
+  ┌──────────────────────┬──────────────────┬─────────────────────────────┐
+  │  Signal tier         │  Condition       │  Outcome                     │
+  ├──────────────────────┼──────────────────┼─────────────────────────────┤
+  │  Sigma hit ≥ HIGH    │  any             │ → CONFIRMED_ATTACK (fast)    │
+  │  campaign=True       │  any             │ → ACTIVE_CAMPAIGN (override) │
+  │  Sigma hit + SPC     │  anomaly=True    │ → CONFIRMED_ATTACK           │
+  │  Sigma + triage≥.89  │  any             │ → CONFIRMED_ATTACK           │
+  │  triage≥.89          │  SPC or MITRE    │ → CONFIRMED_ATTACK           │
+  │  Sigma hit only      │  or triage≥.89   │ → BEHAVIOURAL_ANOMALY        │
+  │  SPC anomaly         │  score≥.42       │ → CONFIRMED_ATTACK           │
+  │  SPC anomaly         │  score<.42       │ → ANOMALOUS_PATTERN          │
+  │  no signals          │  score≥.50       │ → CONFIRMED_ATTACK           │
+  │  no signals          │  .33≤score<.50   │ → BEHAVIOURAL_ANOMALY        │
+  │  no signals          │  score<.33       │ → NORMAL_BEHAVIOUR           │
+  └──────────────────────┴──────────────────┴─────────────────────────────┘
 """
 from __future__ import annotations
 
@@ -77,37 +79,62 @@ class FusionEngine:
         )
 
         # ---------------------------------------------------------------
-        # Override: active campaign always wins
-        # ---------------------------------------------------------------
-        if campaign_result.is_campaign:
-            return "ACTIVE_CAMPAIGN", ml_result.score, fv
-
-        # ---------------------------------------------------------------
-        # Triple-layer matrix  (v2 – thresholds calibrated for heuristic
-        # scorer cold-start where max realistic score ≈ 0.55)
+        # Derived signals
         # ---------------------------------------------------------------
         has_sigma_hit = len(sigma_hits) > 0
         sigma_high = sigma_max_severity >= 3       # high or critical
         spc_anomaly = spc_result.is_anomaly
         score = ml_result.score
 
+        # Triage confidence: the triage agent already validated this event
+        # with an ensemble model.  adjusted_score >= 0.89 is the
+        # anomalous/escalation threshold → treat as strong evidence.
+        triage_score_raw = float(payload.get("adjusted_score", 0.0))
+        triage_escalation = triage_score_raw >= 0.89
+
+        # Known MITRE tactic (not empty, not "unknown") — check BOTH triage
+        # payload AND the Hunter's own L2 MITRE mapper result so that events
+        # with mitre_tactic="unknown" in triage can still be confirmed if the
+        # MITRE mapper found matching rules.
+        _mt = str(payload.get("mitre_tactic", "")).strip().lower()
+        has_known_mitre = (
+            (bool(_mt) and _mt != "unknown")
+            or mitre_result.match_count > 0
+        )
+
+        # ---------------------------------------------------------------
+        # Triple-layer + triage-confidence matrix  (v3)
+        # ---------------------------------------------------------------
+
         if sigma_high:
             finding_type = "CONFIRMED_ATTACK"
+
+        elif campaign_result.is_campaign:
+            finding_type = "ACTIVE_CAMPAIGN"
 
         elif has_sigma_hit and spc_anomaly:
             finding_type = "CONFIRMED_ATTACK"
 
-        elif has_sigma_hit and not spc_anomaly:
+        elif has_sigma_hit and triage_escalation:
+            # Sigma corroborates triage escalation
+            finding_type = "CONFIRMED_ATTACK"
+
+        elif triage_escalation and (spc_anomaly or has_known_mitre):
+            # Triage is highly confident + at least one corroborating signal
+            finding_type = "CONFIRMED_ATTACK"
+
+        elif has_sigma_hit or triage_escalation:
+            # Strong signal, but no corroboration → anomaly
             finding_type = "BEHAVIOURAL_ANOMALY"
 
-        elif not has_sigma_hit and spc_anomaly:
+        elif spc_anomaly:
             if score >= 0.42:
                 finding_type = "CONFIRMED_ATTACK"
             else:
                 finding_type = "ANOMALOUS_PATTERN"
 
         else:
-            # No Sigma hit, no SPC anomaly – purely ML-driven
+            # No Sigma hit, no SPC anomaly, no triage escalation
             if score >= 0.50:
                 finding_type = "CONFIRMED_ATTACK"
             elif score >= 0.33:

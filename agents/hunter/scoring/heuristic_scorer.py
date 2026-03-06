@@ -2,12 +2,13 @@
 Heuristic Scorer – weighted linear combination of the 42-dim feature vector.
 
 Weights are calibrated so that events passing the score gate (≥0.70)
-produce heuristic scores in a usable range (0.25–0.55) for the fusion
+produce heuristic scores in a usable range (0.30–0.65) for the fusion
 decision matrix.  Features that are always zero in the current pipeline
 (temporal_boost, destination_risk, high/medium_severity_count) are zeroed
 so the weight budget goes to features that actually carry signal.
 
-v2  – 2025-06: rebalanced for cold-start (no CatBoost model yet).
+v3  – 2026-03: boosted triage passthrough weights so reported confidence
+      better reflects triage model certainty.  0.93 triage → ~0.55 hunter.
 """
 from __future__ import annotations
 
@@ -20,9 +21,9 @@ from models import FEATURE_ORDER
 # ---------------------------------------------------------------------------
 HEURISTIC_WEIGHTS: Dict[str, float] = {
     # Triage passthrough — dominant signal for cold-start
-    "adjusted_score": 0.28,        # primary, always ≥ 0.70 after gate
-    "base_score": 0.06,            # combined_score
-    "entity_risk": 0.04,           # asset_multiplier
+    "adjusted_score": 0.38,        # primary, always ≥ 0.70 after gate
+    "base_score": 0.10,            # combined_score
+    "entity_risk": 0.05,           # asset_multiplier
     "ioc_boost": 0.06,             # ioc_match * ioc_confidence/100
     "temporal_boost": 0.00,        # not in TriageResult → always 0
     "destination_risk": 0.00,      # not in TriageResult → always 0
