@@ -5,18 +5,18 @@ Takes the combined output from all L1/L2 threads, builds the 42-dim
 feature vector, and derives the final hunter_score plus finding_type
 using the 9-cell decision table from the plan.
 
-Decision matrix:
+Decision matrix (v2 – lowered thresholds for heuristic cold-start):
   ┌────────────────────┬──────────────────┬─────────────────────────────┐
   │  Sigma layer       │  SPC layer       │  ML layer outcome            │
   ├────────────────────┼──────────────────┼─────────────────────────────┤
   │  hit ≥ HIGH        │  any             │ → CONFIRMED_ATTACK (fast)    │
   │  hit (any)         │  anomaly=True    │ → CONFIRMED_ATTACK            │
   │  hit (any)         │  anomaly=False   │ → BEHAVIOURAL_ANOMALY         │
-  │  no hit            │  anomaly=True    │ score ≥ .75 → CONFIRMED       │
-  │  no hit            │  anomaly=True    │ score < .75 → ANOMALOUS_PAT   │
-  │  no hit            │  anomaly=False   │ score ≥ .85 → CONFIRMED       │
-  │  no hit            │  anomaly=False   │ .65 ≤ score < .85 → BEHAV     │
-  │  no hit            │  anomaly=False   │ score < .65 → NORMAL          │
+  │  no hit            │  anomaly=True    │ score ≥ .42 → CONFIRMED       │
+  │  no hit            │  anomaly=True    │ score < .42 → ANOMALOUS_PAT   │
+  │  no hit            │  anomaly=False   │ score ≥ .50 → CONFIRMED       │
+  │  no hit            │  anomaly=False   │ .33 ≤ score < .50 → BEHAV     │
+  │  no hit            │  anomaly=False   │ score < .33 → NORMAL          │
   │  campaign=True     │  any             │ → ACTIVE_CAMPAIGN (override)  │
   └────────────────────┴──────────────────┴─────────────────────────────┘
 """
@@ -83,7 +83,8 @@ class FusionEngine:
             return "ACTIVE_CAMPAIGN", ml_result.score, fv
 
         # ---------------------------------------------------------------
-        # Triple-layer matrix
+        # Triple-layer matrix  (v2 – thresholds calibrated for heuristic
+        # scorer cold-start where max realistic score ≈ 0.55)
         # ---------------------------------------------------------------
         has_sigma_hit = len(sigma_hits) > 0
         sigma_high = sigma_max_severity >= 3       # high or critical
@@ -100,16 +101,16 @@ class FusionEngine:
             finding_type = "BEHAVIOURAL_ANOMALY"
 
         elif not has_sigma_hit and spc_anomaly:
-            if score >= 0.75:
+            if score >= 0.42:
                 finding_type = "CONFIRMED_ATTACK"
             else:
                 finding_type = "ANOMALOUS_PATTERN"
 
         else:
             # No Sigma hit, no SPC anomaly – purely ML-driven
-            if score >= 0.85:
+            if score >= 0.50:
                 finding_type = "CONFIRMED_ATTACK"
-            elif score >= 0.65:
+            elif score >= 0.33:
                 finding_type = "BEHAVIOURAL_ANOMALY"
             else:
                 finding_type = "NORMAL_BEHAVIOUR"
@@ -140,16 +141,22 @@ class FusionEngine:
         #   asset_multiplier → entity_risk
         #   ioc_match (0/1)  → ioc_boost  (scaled by ioc_confidence)
         #   template_rarity  → template_risk
-        #   All other triage-passthrough features (temporal_boost, destination_risk,
-        #   off_hours_boost, high_severity_count, medium_severity_count,
-        #   distinct_categories, event_count, correlated_alert_count) are not
-        #   present in TriageResult — defaulted to 0.0 so the vector dimension
-        #   is preserved; enrichment can be added in a future sprint.
+        #
+        # v2: Four previously-dead features are now enriched:
+        #   off_hours_boost       ← 1.0 if current UTC hour is outside 08–18
+        #   distinct_categories   ← temporal_result.unique_categories
+        #   event_count           ← 1 + temporal_result.escalation_count
+        #   correlated_alert_count← len(temporal_result.related_alert_ids)
         ioc_boost = (
             float(payload.get("ioc_match", 0))
             * float(payload.get("ioc_confidence", 0))
             / 100.0
         )
+
+        from datetime import datetime, timezone
+        _hour = datetime.now(tz=timezone.utc).hour
+        off_hours = 1.0 if not (8 <= _hour < 18) else 0.0
+
         triage = [
             float(payload.get("adjusted_score", 0.0)),    # adjusted_score
             float(payload.get("combined_score", 0.0)),    # base_score
@@ -157,12 +164,12 @@ class FusionEngine:
             ioc_boost,                                     # ioc_boost
             0.0,                                           # temporal_boost (N/A)
             0.0,                                           # destination_risk (N/A)
-            0.0,                                           # off_hours_boost (N/A)
+            off_hours,                                     # off_hours_boost (enriched)
             0.0,                                           # high_severity_count (N/A)
             0.0,                                           # medium_severity_count (N/A)
-            0.0,                                           # distinct_categories (N/A)
-            0.0,                                           # event_count (N/A)
-            0.0,                                           # correlated_alert_count (N/A)
+            float(temporal_result.unique_categories),      # distinct_categories (enriched)
+            float(1 + temporal_result.escalation_count),   # event_count (enriched)
+            float(len(temporal_result.related_alert_ids)), # correlated_alert_count (enriched)
             float(payload.get("template_rarity", 0.0)),   # template_risk
         ]
 

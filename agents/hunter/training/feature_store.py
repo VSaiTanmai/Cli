@@ -36,26 +36,25 @@ def write_training_row(
         return
 
     feature_json = json.dumps(verdict.feature_vector)
-    now_str = datetime.now(tz=timezone.utc).isoformat()
 
     # Convert finding_type to label_source description
     label_source = _determine_label_source(verdict)
 
     try:
+        # Table schema (verified):
+        #   alert_id String, feature_vector String, label UInt8,
+        #   label_source LowCardinality(String), label_confidence Float32,
+        #   created_at DateTime64(3)
         ch_client.command(
             f"""
             INSERT INTO {CLICKHOUSE_DATABASE}.hunter_training_data
-            (alert_id, feature_vector_json, label, label_source,
-             hunter_score, finding_type, is_fast_path, recorded_at)
+            (alert_id, feature_vector, label, label_source, label_confidence)
             VALUES (
                 '{_s(verdict.alert_id)}',
                 '{_s(feature_json)}',
                 {label},
                 '{_s(label_source)}',
-                {verdict.hunter_score:.6f},
-                '{_s(verdict.finding_type)}',
-                {int(verdict.is_fast_path)},
-                '{now_str}'
+                {verdict.hunter_score:.6f}
             )
             """
         )

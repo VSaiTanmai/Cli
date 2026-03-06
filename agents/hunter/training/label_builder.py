@@ -44,10 +44,11 @@ def get_label(finding_type: str) -> int:
 
 
 # Minimum confidence required to store training data.
-# Heuristic scorer cold-start produces ~0.26-0.31 with zero enrichment
-# signals — storing those pollutes future training with noise.
-# Only CatBoost verdicts or high-confidence heuristic verdicts pass.
-MIN_TRAINING_CONFIDENCE = 0.50
+# v2: lowered from 0.50 to 0.20 — the cold-start heuristic scorer produces
+# scores in 0.27-0.40 range (with the rebalanced weights).  The original
+# threshold of 0.50 blocked ALL training writes, creating a chicken-and-egg
+# problem where CatBoost could never be trained.
+MIN_TRAINING_CONFIDENCE = 0.20
 
 
 def should_include_in_training(verdict: HunterVerdict) -> bool:
@@ -87,7 +88,7 @@ def fetch_training_set(
     keys: feature_vector_json, label
     """
     try:
-        count_q = f"SELECT count() FROM {CLICKHOUSE_DATABASE}.hunter_training_data WHERE is_fast_path = 0"
+        count_q = f"SELECT count() FROM {CLICKHOUSE_DATABASE}.hunter_training_data"
         rows = ch_client.query(count_q).result_rows
         total = int(rows[0][0]) if rows else 0
 
@@ -99,17 +100,10 @@ def fetch_training_set(
 
         q = f"""
             SELECT
-                feature_vector_json,
-                CASE
-                    WHEN finding_type IN ('CONFIRMED_ATTACK', 'ACTIVE_CAMPAIGN') THEN 1
-                    WHEN finding_type IN ('FALSE_POSITIVE', 'NORMAL_BEHAVIOUR')  THEN 0
-                    WHEN finding_type IN ('BEHAVIOURAL_ANOMALY', 'SIGMA_MATCH')  THEN 1
-                    WHEN finding_type = 'ANOMALOUS_PATTERN'                      THEN 1
-                    ELSE 0
-                END AS label
+                feature_vector AS feature_vector_json,
+                label
             FROM {CLICKHOUSE_DATABASE}.hunter_training_data
-            WHERE is_fast_path = 0
-            ORDER BY recorded_at DESC
+            ORDER BY created_at DESC
             LIMIT 50000
         """
         rows = ch_client.query(q).result_rows

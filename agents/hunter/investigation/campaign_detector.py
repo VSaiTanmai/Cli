@@ -42,22 +42,17 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> CampaignResult:
     try:
         # -------------------------------------------------------------------
         # Campaign detection: multi-host, multi-tactic activity
+        # Query triage_scores directly — the old query joined on
+        # network_events which excluded security-event-only entities.
         # -------------------------------------------------------------------
         q = f"""
             SELECT
-                countDistinct(t.hostname) AS host_count,
-                countDistinct(t.mitre_tactic) AS tactic_count
-            FROM {CLICKHOUSE_DATABASE}.triage_scores t
-            INNER JOIN (
-                SELECT hostname, toString(src_ip) AS source_ip
-                FROM {CLICKHOUSE_DATABASE}.network_events
-                WHERE toString(src_ip) = '{source_ip}'
-                  AND timestamp >= now() - INTERVAL {INVESTIGATION_WINDOW_MIN} MINUTE
-                GROUP BY hostname, src_ip
-                HAVING count() >= 3
-            ) ne ON t.hostname = ne.hostname
-            WHERE t.source_ip = '{source_ip}'
-              AND t.timestamp >= now() - INTERVAL {INVESTIGATION_WINDOW_MIN} MINUTE
+                countDistinct(hostname) AS host_count,
+                countDistinct(mitre_tactic) AS tactic_count
+            FROM {CLICKHOUSE_DATABASE}.triage_scores
+            WHERE source_ip = '{source_ip}'
+              AND adjusted_score >= 0.70
+              AND timestamp >= now() - INTERVAL {INVESTIGATION_WINDOW_MIN} MINUTE
         """
         rows = ch_client.query(q).result_rows
 

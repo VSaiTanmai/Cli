@@ -181,13 +181,27 @@ class SPCEngine:
         return None
 
     def _query_current_count(self, hostname: str, source_ip: str) -> float:
-        """Count events for this entity in the last 1-hour window."""
+        """Count events for this entity in the last 1-hour window.
+
+        Queries both network_events and triage_scores because
+        features_entity_freq baselines are fed by MVs from ALL three
+        source tables (network, security, process), but the old code
+        only checked network_events — missing security-event entities.
+        """
         q = f"""
-            SELECT count() as cnt
-            FROM {CLICKHOUSE_DATABASE}.network_events
-            WHERE hostname = '{_s(hostname)}'
-              AND toString(src_ip) = '{_s(source_ip)}'
-              AND timestamp >= now() - INTERVAL 1 HOUR
+            SELECT max(cnt) FROM (
+                SELECT count() AS cnt
+                FROM {CLICKHOUSE_DATABASE}.network_events
+                WHERE hostname = '{_s(hostname)}'
+                  AND toString(src_ip) = '{_s(source_ip)}'
+                  AND timestamp >= now() - INTERVAL 1 HOUR
+                UNION ALL
+                SELECT count() AS cnt
+                FROM {CLICKHOUSE_DATABASE}.triage_scores
+                WHERE hostname = '{_s(hostname)}'
+                  AND source_ip = '{_s(source_ip)}'
+                  AND timestamp >= now() - INTERVAL 1 HOUR
+            )
         """
         try:
             ch = _make_ch()
