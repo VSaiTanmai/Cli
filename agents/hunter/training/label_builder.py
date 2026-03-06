@@ -47,10 +47,11 @@ def get_label(finding_type: str) -> int:
 
 
 # Minimum confidence required to store training data.
-# Heuristic scorer cold-start produces ~0.26-0.31 with zero enrichment
-# signals — storing those pollutes future training with noise.
-# Only CatBoost verdicts or high-confidence heuristic verdicts pass.
-MIN_TRAINING_CONFIDENCE = 0.50
+# v2: lowered from 0.50 to 0.20 — the cold-start heuristic scorer produces
+# scores in 0.27-0.40 range (with the rebalanced weights).  The original
+# threshold of 0.50 blocked ALL training writes, creating a chicken-and-egg
+# problem where CatBoost could never be trained.
+MIN_TRAINING_CONFIDENCE = 0.20
 
 
 def should_include_in_training(verdict: HunterVerdict) -> bool:
@@ -106,7 +107,7 @@ def fetch_training_set(
 
         q = f"""
             SELECT
-                feature_vector,
+                feature_vector AS feature_vector_json,
                 label
             FROM {CLICKHOUSE_DATABASE}.hunter_training_data
             ORDER BY created_at DESC

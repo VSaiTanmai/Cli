@@ -488,10 +488,10 @@ class ScoreFusion:
             # ── Post-model adjusters ──────────────────────────────────
             score_boost = 0.0
 
-            # Template rarity: v4 model now has template_rarity as #1 feature
-            # (819K LightGBM gain), so the post-model boost is disabled (0.0).
-            # The conditional is kept for future use or IOC-like overrides.
-            tmpl_rarity = float(feat.get("template_rarity", 0.5))
+            # Template rarity: removed from v6 model features.  Use the
+            # metadata key (_template_rarity) for any future boost logic.
+            # Boost is disabled (config.TEMPLATE_RARITY_BOOST_MAX = 0.0).
+            tmpl_rarity = float(feat.get("_template_rarity", feat.get("template_rarity", 0.5)))
             if tmpl_rarity < config.TEMPLATE_RARITY_RARE_THRESHOLD:
                 # Linearly scale boost: rarity 0 → full boost, threshold → 0
                 rarity_factor = 1.0 - (tmpl_rarity / config.TEMPLATE_RARITY_RARE_THRESHOLD)
@@ -558,7 +558,7 @@ class ScoreFusion:
                     source_ip=source_ip,
                     user_id=user_id,
                     template_id=template_id,
-                    template_rarity=float(feat.get("template_rarity", 0.0)),
+                    template_rarity=float(feat.get("_template_rarity", feat.get("template_rarity", 0.0))),
                     combined_score=float(combined[i]),
                     lgbm_score=float(lgbm[i]),
                     eif_score=float(eif[i]),
@@ -595,7 +595,7 @@ class ScoreFusion:
             source_ip=str(event.get("src_ip", event.get("ip_address", ""))),
             user_id=str(event.get("user", event.get("user_id", ""))),
             template_id=str(feat.get("_template_id", "")),
-            template_rarity=float(feat.get("template_rarity", 0.0)),
+            template_rarity=float(feat.get("_template_rarity", feat.get("template_rarity", 0.0))),
             combined_score=float(combined),
             lgbm_score=float(lgbm_s),
             eif_score=float(eif_s),

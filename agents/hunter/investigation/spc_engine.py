@@ -110,12 +110,20 @@ class SPCEngine:
         hostname = str(payload.get("hostname", ""))
         source_ip = str(payload.get("source_ip", ""))
         user_id = str(payload.get("user_id", ""))
+        # Use event timestamp for backlog processing accuracy
+        event_ts = str(payload.get("timestamp", "")).strip()
 
         result = SPCResult()
 
         # --- Look up in-memory baseline ---
         key = f"{hostname}|{source_ip}"
         baseline = self._baselines.get(key)
+
+        if baseline is None and source_ip:
+            # Many entities aggregate under source_ip='0.0.0.0' in the
+            # MV while the triage payload carries a per-event IP.
+            # Try the aggregated key before falling back to CH.
+            baseline = self._baselines.get(f"{hostname}|0.0.0.0")
 
         if baseline is None:
             # Fall back to direct CH query for this entity
@@ -130,7 +138,7 @@ class SPCEngine:
         result.baseline_stddev = std
 
         # --- Compute z-score using current window event count ---
-        observed = self._query_current_count(hostname, source_ip)
+        observed = self._query_current_count(hostname, source_ip, event_ts)
 
         if std > 0:
             z = (observed - mean) / std
@@ -158,14 +166,18 @@ class SPCEngine:
     def _query_entity_baseline(
         self, hostname: str, source_ip: str
     ) -> Optional[Dict[str, float]]:
-        """Fallback: compute baseline directly from CH if not in cache."""
+        """Fallback: compute baseline directly from CH if not in cache.
+
+        Tries exact (hostname, source_ip) first, then hostname-only
+        to handle entities whose baselines aggregate under 0.0.0.0.
+        """
         q = f"""
             SELECT
                 avg(event_count) AS mean_count,
                 stddevSamp(event_count) AS std_count
             FROM {CLICKHOUSE_DATABASE}.features_entity_freq
             WHERE hostname = '{sanitize_sql(hostname)}'
-              AND source_ip = '{sanitize_sql(source_ip)}'
+              AND (source_ip = '{sanitize_sql(source_ip)}' OR source_ip = '0.0.0.0')
               AND window >= now() - INTERVAL {SPC_WINDOW_HOURS} HOUR
         """
         try:
@@ -180,20 +192,39 @@ class SPCEngine:
             log.debug("SPC entity baseline query failed: %s", exc)
         return None
 
-    def _query_current_count(self, hostname: str, source_ip: str) -> float:
-        """
-        Count events for this entity in the last 1-hour window.
+    def _query_current_count(self, hostname: str, source_ip: str, event_ts: str = "") -> float:
+        """Count events for this entity in a 1-hour window around the event.
 
-        Queries `features_entity_freq` (which aggregates from network_events,
-        security_events, and process_events via materialized views) so the
-        count covers ALL event types, not just network.
+        Queries both network_events and triage_scores because
+        features_entity_freq baselines are fed by MVs from ALL three
+        source tables (network, security, process), but the old code
+        only checked network_events — missing security-event entities.
+
+        Uses the event timestamp (not now()) so backlog processing
+        sees the correct activity window.
         """
+        # Anchor time: use event timestamp if available, else now()
+        if event_ts:
+            _anchor = f"parseDateTimeBestEffort('{sanitize_sql(event_ts)}')"
+        else:
+            _anchor = "now()"
+
         q = f"""
-            SELECT sum(event_count) AS cnt
-            FROM {CLICKHOUSE_DATABASE}.features_entity_freq
-            WHERE hostname = '{sanitize_sql(hostname)}'
-              AND source_ip = '{sanitize_sql(source_ip)}'
-              AND window >= now() - INTERVAL 1 HOUR
+            SELECT max(cnt) FROM (
+                SELECT count() AS cnt
+                FROM {CLICKHOUSE_DATABASE}.network_events
+                WHERE hostname = '{sanitize_sql(hostname)}'
+                  AND (toString(src_ip) = '{sanitize_sql(source_ip)}' OR '{sanitize_sql(source_ip)}' = '0.0.0.0')
+                  AND timestamp >= {_anchor} - INTERVAL 1 HOUR
+                  AND timestamp <= {_anchor}
+                UNION ALL
+                SELECT count() AS cnt
+                FROM {CLICKHOUSE_DATABASE}.triage_scores
+                WHERE hostname = '{sanitize_sql(hostname)}'
+                  AND (source_ip = '{sanitize_sql(source_ip)}' OR '{sanitize_sql(source_ip)}' = '0.0.0.0')
+                  AND timestamp >= {_anchor} - INTERVAL 1 HOUR
+                  AND timestamp <= {_anchor}
+            )
         """
         try:
             ch = _make_ch()

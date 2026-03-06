@@ -44,15 +44,15 @@ DRAIN3_CONFIG_PATH = os.getenv("DRAIN3_CONFIG_PATH", "/app/drain3.ini")
 # ── Models ──────────────────────────────────────────────────────────────────
 
 MODEL_DIR = os.getenv("MODEL_DIR", "/models")
-MODEL_LGBM_PATH = os.getenv("MODEL_LGBM_PATH", "/models/lgbm_v3.0.0.onnx")
-MODEL_EIF_PATH = os.getenv("MODEL_EIF_PATH", "/models/eif_v3.0.0.pkl")
+MODEL_LGBM_PATH = os.getenv("MODEL_LGBM_PATH", "/models/lgbm_v6.0.0.onnx")
+MODEL_EIF_PATH = os.getenv("MODEL_EIF_PATH", "/models/eif_v6.0.0.pkl")
 MODEL_EIF_THRESHOLD_PATH = os.getenv(
     "MODEL_EIF_THRESHOLD_PATH", "/models/eif_threshold.npy"
 )
 MODEL_EIF_CALIBRATION_PATH = os.getenv(
     "MODEL_EIF_CALIBRATION_PATH", "/models/eif_calibration.npz"
 )
-MODEL_ARF_CHECKPOINT = os.getenv("MODEL_ARF_CHECKPOINT", "/models/arf_v3.0.0.pkl")
+MODEL_ARF_CHECKPOINT = os.getenv("MODEL_ARF_CHECKPOINT", "/models/arf_v6.0.0.pkl")
 FEATURE_COLS_PATH = os.getenv("FEATURE_COLS_PATH", "/models/feature_cols.pkl")
 MANIFEST_PATH = os.getenv("MANIFEST_PATH", "/models/manifest.json")
 
@@ -69,19 +69,18 @@ for pair in _raw_weights.split(","):
 
 # ── Thresholds ──────────────────────────────────────────────────────────────
 
-# v7.0 thresholds — calibrated 2026-03-06 from retrain_v4.py
-# (production-aligned features, 175,478 samples, 12 datasets, F1=0.9908).
-# Training score distributions:
-#   Normal:    mean=0.1085  p95=0.1888  p99=0.3947
-#   Malicious: mean=0.9241  p25=0.8874  p50=0.9368
-# suspicious=0.19 → detect=99.6%, FPR=4.66%  (≈ normal p95)
-# anomalous=0.70  → catch ~95%+ attacks, ~0% FPR  (between normal p99
-#   and malicious p25; all per-source malicious means are 0.80–0.98).
+# v6.0.0 thresholds — template_rarity REMOVED from model (19 features).
+# Training: 175,478 samples, 12 datasets, F1=0.9469, Prec=0.9848, Rec=0.9117.
+# LGBM: normal=0.0699, mal=0.9329 | EIF: normal=0.4853, mal=0.6478 (flipped).
+# suspicious=0.39 → detect=93.8%, FPR=4.82%  (flags known-attacks early)
+# anomalous=0.89  → high-confidence escalation only (matches v3/v4 deploy)
+#   Lowering to 0.70 caused 70%+ escalation rate; 0.89 keeps escalation
+#   for truly high-confidence detections only.
 DEFAULT_SUSPICIOUS_THRESHOLD = float(
-    os.getenv("DEFAULT_SUSPICIOUS_THRESHOLD", "0.19")
+    os.getenv("DEFAULT_SUSPICIOUS_THRESHOLD", "0.39")
 )
 DEFAULT_ANOMALOUS_THRESHOLD = float(
-    os.getenv("DEFAULT_ANOMALOUS_THRESHOLD", "0.70")
+    os.getenv("DEFAULT_ANOMALOUS_THRESHOLD", "0.89")
 )
 DISAGREEMENT_THRESHOLD = float(os.getenv("DISAGREEMENT_THRESHOLD", "0.30"))
 
@@ -135,10 +134,9 @@ ARF_PSEUDO_LABEL_HIGH = float(os.getenv("ARF_PSEUDO_LABEL_HIGH", "0.80"))
 ARF_PSEUDO_LABEL_LOW = float(os.getenv("ARF_PSEUDO_LABEL_LOW", "0.20"))
 
 # ── Template Rarity & IOC Post-Model Boost ──────────────────────────────────
-# v4 training: template_rarity is now the #1 LightGBM feature (819K gain),
-# properly correlated with Drain3 semantics (benign→low, attack→high).
-# Post-model boost is DISABLED (0.0) to avoid double-counting — the model
-# already fully incorporates template_rarity signal during inference.
+# v5 training: template_rarity is now the #1 LightGBM feature (947K gain),
+# log-scaled to match production Drain3 formula. Post-model boost remains
+# DISABLED (0.0) to avoid double-counting.
 # threat_intel_flag remains 0 in training, so IOC boost is still needed.
 TEMPLATE_RARITY_RARE_THRESHOLD = float(
     os.getenv("TEMPLATE_RARITY_RARE_THRESHOLD", "0.15")
@@ -155,12 +153,17 @@ IOC_MATCH_SCORE_BOOST = float(os.getenv("IOC_MATCH_SCORE_BOOST", "0.15"))
 # drowns out the EIF signal.
 # Example: reverse shell → LGBM=0.005, EIF=0.698. Without override:
 #   cold combined = 0.80*0.005 + 0.20*0.698 = 0.144 → DISCARDED!
-# With override: EIF ≥ 0.70 → combined floor = suspicious threshold → MONITOR.
+# With override: EIF ≥ 0.85 → combined floor = suspicious threshold → MONITOR.
+#
+# v6.0.0: Raised threshold from 0.65→0.85 — the EIF has high FPR on security
+# events (22.7% benign events triggered override at 0.65), inflating benign
+# scores above suspicious threshold. At 0.85, only truly extreme anomalies
+# trigger the override, reducing false monitors by ~24 events per run.
 EIF_ANOMALY_OVERRIDE_THRESHOLD = float(
-    os.getenv("EIF_ANOMALY_OVERRIDE_THRESHOLD", "0.65")
+    os.getenv("EIF_ANOMALY_OVERRIDE_THRESHOLD", "0.85")
 )
 EIF_ANOMALY_OVERRIDE_FLOOR = float(
-    os.getenv("EIF_ANOMALY_OVERRIDE_FLOOR", "0.45")  # just above suspicious
+    os.getenv("EIF_ANOMALY_OVERRIDE_FLOOR", "0.42")  # just above suspicious
 )
 
 # ── Startup Self-Test ───────────────────────────────────────────────────────

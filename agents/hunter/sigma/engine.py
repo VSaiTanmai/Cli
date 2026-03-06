@@ -165,9 +165,10 @@ class SigmaEngine:
         # --- keyword check ---------------------------------------------------
         keywords: List[str] = detection.get("keywords", [])
         if keywords:
-            summary_text = str(payload.get("summary", "")).lower()
-            evidence_text = str(payload.get("evidence_json", "")).lower()
-            haystack = summary_text + " " + evidence_text
+            # Build haystack from ALL payload values (not just summary/evidence)
+            # so keywords can match triage fields like source_type, mitre_tactic,
+            # mitre_technique, action, hostname, etc.
+            haystack = " ".join(str(v) for v in payload.values() if v).lower()
             kw_match = (
                 all(kw.lower() in haystack for kw in keywords)
                 if condition == "and"
@@ -229,7 +230,7 @@ class SigmaEngine:
             return re.sub(r"[';\"\\]", "", value)
 
         try:
-            return template.format(
+            rendered = template.format(
                 hostname=_sanitise(hostname),
                 source_ip=_sanitise(source_ip),
                 user_id=_sanitise(user_id),
@@ -239,6 +240,18 @@ class SigmaEngine:
         except (KeyError, IndexError) as exc:
             log.debug("SQL template rendering failed: %s", exc)
             return ""
+
+        # Use event timestamp instead of now() for backlog processing.
+        # When the Hunter is catching up on historical messages, now()
+        # would miss the actual data window.  Fall back to now() if the
+        # payload has no timestamp.
+        event_ts = str(payload.get("timestamp", "")).strip()
+        if event_ts:
+            rendered = rendered.replace(
+                "now()", f"parseDateTimeBestEffort('{_sanitise(event_ts)}')"
+            )
+
+        return rendered
 
     # ------------------------------------------------------------------
     # Helpers

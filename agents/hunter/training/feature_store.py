@@ -43,6 +43,10 @@ def write_training_row(
     label_confidence = verdict.hunter_score
 
     try:
+        # Table schema (verified):
+        #   alert_id String, feature_vector String, label UInt8,
+        #   label_source LowCardinality(String), label_confidence Float32,
+        #   created_at DateTime64(3)
         ch_client.command(
             f"""
             INSERT INTO {CLICKHOUSE_DATABASE}.hunter_training_data
@@ -52,7 +56,7 @@ def write_training_row(
                 '{sanitize_sql(feature_json)}',
                 {label},
                 '{sanitize_sql(label_source)}',
-                {label_confidence:.6f}
+                {verdict.hunter_score:.6f}
             )
             """
         )

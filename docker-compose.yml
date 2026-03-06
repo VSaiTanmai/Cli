@@ -959,17 +959,18 @@ services:
       DRAIN3_STATE_PATH: /app/drain3_state.bin
       # â”€â”€ ML model paths â”€â”€
       MODEL_DIR: /models
-      MODEL_LGBM_PATH: /models/lgbm_v3.0.0.onnx
-      MODEL_EIF_PATH: /models/eif_v3.0.0.pkl
+      MODEL_LGBM_PATH: /models/lgbm_v6.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v6.0.0.pkl
       MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
       MODEL_EIF_CALIBRATION_PATH: /models/eif_calibration.npz
-      MODEL_ARF_CHECKPOINT: /models/arf_v3.0.0.pkl
+      MODEL_ARF_CHECKPOINT: /models/arf_v6.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # â”€â”€ Scoring (v5 â€” LGBM-dominant, 2026-03-05) â”€â”€
+      # â”€â”€ Scoring (v6 â€” LGBM-dominant, 2026-03-06) â”€â”€
       SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.19"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.70"
+      KAFKA_OFFSET_RESET: "latest"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       # â”€â”€ EIF Anomaly Override â”€â”€
@@ -1059,17 +1060,18 @@ services:
       DRAIN3_CONFIG_PATH: /app/drain3.ini
       DRAIN3_STATE_PATH: /app/drain3_state.bin
       MODEL_DIR: /models
-      MODEL_LGBM_PATH: /models/lgbm_v3.0.0.onnx
-      MODEL_EIF_PATH: /models/eif_v3.0.0.pkl
+      MODEL_LGBM_PATH: /models/lgbm_v6.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v6.0.0.pkl
       MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
       MODEL_EIF_CALIBRATION_PATH: /models/eif_calibration.npz
-      MODEL_ARF_CHECKPOINT: /models/arf_v3.0.0.pkl
+      MODEL_ARF_CHECKPOINT: /models/arf_v6.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # â”€â”€ Scoring (v5 — LGBM-dominant, 2026-03-05) â”€â”€
+      # â”€â”€ Scoring (v6 — LGBM-dominant, 2026-03-06) â”€â”€
       SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.19"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.70"
+      KAFKA_OFFSET_RESET: "latest"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
@@ -1153,17 +1155,18 @@ services:
       DRAIN3_CONFIG_PATH: /app/drain3.ini
       DRAIN3_STATE_PATH: /app/drain3_state.bin
       MODEL_DIR: /models
-      MODEL_LGBM_PATH: /models/lgbm_v3.0.0.onnx
-      MODEL_EIF_PATH: /models/eif_v3.0.0.pkl
+      MODEL_LGBM_PATH: /models/lgbm_v6.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v6.0.0.pkl
       MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
       MODEL_EIF_CALIBRATION_PATH: /models/eif_calibration.npz
-      MODEL_ARF_CHECKPOINT: /models/arf_v3.0.0.pkl
+      MODEL_ARF_CHECKPOINT: /models/arf_v6.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # â”€â”€ Scoring (v5 — LGBM-dominant, 2026-03-05) â”€â”€
+      # â”€â”€ Scoring (v6 — LGBM-dominant, 2026-03-06) â”€â”€
       SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.19"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.70"
+      KAFKA_OFFSET_RESET: "latest"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"
@@ -1323,17 +1326,18 @@ services:
       DRAIN3_CONFIG_PATH: /app/drain3.ini
       DRAIN3_STATE_PATH: /app/drain3_state.bin
       MODEL_DIR: /models
-      MODEL_LGBM_PATH: /models/lgbm_v3.0.0.onnx
-      MODEL_EIF_PATH: /models/eif_v3.0.0.pkl
+      MODEL_LGBM_PATH: /models/lgbm_v6.0.0.onnx
+      MODEL_EIF_PATH: /models/eif_v6.0.0.pkl
       MODEL_EIF_THRESHOLD_PATH: /models/eif_threshold.npy
       MODEL_EIF_CALIBRATION_PATH: /models/eif_calibration.npz
-      MODEL_ARF_CHECKPOINT: /models/arf_v3.0.0.pkl
+      MODEL_ARF_CHECKPOINT: /models/arf_v6.0.0.pkl
       FEATURE_COLS_PATH: /models/feature_cols.pkl
       MANIFEST_PATH: /models/manifest.json
-      # â”€â”€ Scoring (v5 — LGBM-dominant, 2026-03-05) â”€â”€
+      # â”€â”€ Scoring (v6 — LGBM-dominant, 2026-03-06) â”€â”€
       SCORE_WEIGHTS: "lgbm=0.80,eif=0.12,arf=0.08"
-      DEFAULT_SUSPICIOUS_THRESHOLD: "0.19"
-      DEFAULT_ANOMALOUS_THRESHOLD: "0.70"
+      KAFKA_OFFSET_RESET: "latest"
+      DEFAULT_SUSPICIOUS_THRESHOLD: "0.39"
+      DEFAULT_ANOMALOUS_THRESHOLD: "0.89"
       DISAGREEMENT_THRESHOLD: "0.30"
       FEATURE_STALENESS_TIMEOUT_SEC: "300"
       EIF_ANOMALY_OVERRIDE_THRESHOLD: "0.65"

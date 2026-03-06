@@ -34,10 +34,23 @@ class Drain3Miner:
     """
     Thread-safe Drain3 template miner with rarity scoring.
 
-    Template rarity = 1.0 - (template_count / total_count)
+    Template rarity = 1.0 - log(1 + cluster_size) / log(1 + total_events)
     Rare templates  → rarity close to 1.0 (more suspicious)
     Common templates → rarity close to 0.0 (benign)
+
+    Log-scale ensures meaningful spread even with many small clusters:
+      cluster=1,   total=100K → rarity ≈ 0.94 (truly rare)
+      cluster=100, total=100K → rarity ≈ 0.60 (moderate)
+      cluster=10K, total=100K → rarity ≈ 0.20 (common)
+      cluster=50K, total=100K → rarity ≈ 0.06 (very common)
+
+    Warmup: Returns neutral 0.5 until MIN_WARMUP_EVENTS (10 000) events
+    have been processed.  During warmup, the template distribution is too
+    concentrated to be reliable, so 0.5 forces the model to score using
+    only the other 19 features.
     """
+
+    MIN_WARMUP_EVENTS = 10_000
 
     def __init__(self, state_path: Optional[str] = None, config_path: Optional[str] = None):
         self._lock = threading.Lock()
@@ -121,13 +134,25 @@ class Drain3Miner:
 
             self._total_events += 1
 
-            # Rarity: inverse frequency. Rare templates → high score.
-            # Use log-smoothed frequency to avoid extreme values for new templates
-            frequency = cluster_size / self._total_events
-            rarity = 1.0 - frequency
+            # ── Warmup guard ─────────────────────────────────────────
+            # During warmup the template distribution is too concentrated
+            # (few templates, each matching most events → rarity ≈ 0 for
+            # everything).  Returning 0.5 (mid-point between benign mean
+            # 0.26 and attack mean 0.79 in training) makes the model
+            # rely on the other 19 features instead.
+            if self._total_events < self.MIN_WARMUP_EVENTS:
+                rarity = 0.5
+            else:
+                # Rarity: log-scaled inverse frequency.
+                import math
+                log_total = math.log(1.0 + self._total_events)
+                if log_total > 0:
+                    rarity = 1.0 - math.log(1.0 + cluster_size) / log_total
+                else:
+                    rarity = 0.5
 
-            # Clamp to [0.0, 1.0]
-            rarity = max(0.0, min(1.0, rarity))
+                # Clamp to [0.0, 1.0]
+                rarity = max(0.0, min(1.0, rarity))
 
             # Periodic state persistence
             now = time.monotonic()
@@ -156,8 +181,15 @@ class Drain3Miner:
         with self._lock:
             for c in self._miner.drain.clusters:
                 if c.cluster_id == cluster_num:
-                    frequency = c.size / max(1, self._total_events)
-                    return max(0.0, min(1.0, 1.0 - frequency))
+                    if self._total_events < self.MIN_WARMUP_EVENTS:
+                        return 0.5
+                    import math
+                    log_total = math.log(1.0 + max(1, self._total_events))
+                    if log_total > 0:
+                        rarity = 1.0 - math.log(1.0 + c.size) / log_total
+                    else:
+                        rarity = 0.5
+                    return max(0.0, min(1.0, rarity))
         return 0.5
 
     def _persist_state(self):

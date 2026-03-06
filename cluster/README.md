@@ -1,9 +1,21 @@
-# CLIF Cluster — 2-PC Deployment Guide
+# CLIF Cluster — Multi-Machine Deployment Guide
 
-Deploy all CLIF services at full scale across two Windows PCs on the same LAN.
+Deploy CLIF services across two machines on the same LAN.
+Supports three modes:
+
+| Mode | Compose files | When to use |
+|------|---------------|-------------|
+| **Single-machine** | `docker-compose.yml` | Dev / small-scale |
+| **PC1 + PC2** (Windows × 2) | `pc1.yml` + `pc2.yml` | Two identical Windows PCs |
+| **PC1 + MacBook M1** | `pc1.yml` + `mac.yml` | Windows data tier + ARM compute |
+
+---
+
+## Option A — PC1 (Windows) + PC2 (Windows)
+
 Right-sized for **6C/12T (12 logical CPUs), 16 GB RAM** per machine.
 
-## Architecture
+### Architecture
 
 ```
 ┌──────────────────────────────────────┐    LAN    ┌──────────────────────────────────────┐
@@ -26,7 +38,59 @@ Right-sized for **6C/12T (12 logical CPUs), 16 GB RAM** per machine.
 **Data flow:** Logs → Vector (PC2:1514) →LAN→ Redpanda (PC1) → Consumer (PC1) → ClickHouse (PC1)
 **Only 1 LAN hop** on the ingestion hot path (Vector→Redpanda).
 
+---
+
+## Option B — PC1 (Windows) + MacBook M1
+
+Right-sized for **PC1: 6C/12T, 16 GB** (Windows) + **MacBook: 8 CPU, 16 GB** (ARM64).
+All Docker base images are multi-arch; custom Python images build natively on ARM.
+
+### Architecture
+
+```
+┌──────────────────────────────────────┐    LAN    ┌──────────────────────────────────────┐
+│  PC1  —  DATA & MESSAGE TIER         │◄──────────►│  MacBook M1 — COMPUTE & PRESENT.    │
+│  Windows (11.75 CPUs / 14.6G)       │           │  macOS ARM64 (7.5 CPUs / 13.5G)     │
+│                                      │           │                                      │
+│  Redpanda ×3   (19092/29092/39092)   │           │  Vector    ×1  (1514, 8687, 9514)   │
+│  ClickHouse ×2 (8123, 9000)         │           │  Triage    ×4  (8300–8303)           │
+│  CH Keeper     (12181)               │           │  Hunter    ×1  (internal)            │
+│  MinIO ×3      (9002)               │           │  LanceDB   ×1  (8100) [--profile]   │
+│  Consumer ×2   (internal)           │           │  Merkle    ×1  (internal)            │
+│                                      │           │  RP Console    (8080)                │
+│  12 services (2 one-shot)           │           │  Prometheus    (9090)                │
+│                                      │           │  Grafana       (3002)                │
+│  KEY WIN: Consumer → ClickHouse     │           │                                      │
+│  runs with ZERO LAN hops!           │           │  10 services (+ LanceDB optional)    │
+└──────────────────────────────────────┘           └──────────────────────────────────────┘
+```
+
+**Data flow:** Logs → Vector (Mac:1514) →LAN→ Redpanda (PC1) → Consumer (PC1) → ClickHouse (PC1)
+**Triage scores → Hunter:** Triage (Mac) → Redpanda (PC1) → Hunter (Mac)
+**ARM64 advantage:** M1's unified memory + NEON SIMD gives efficient ONNX inference for 4 Triage agents.
+
+### MacBook Memory Budget
+
+| Service | CPU Limit | RAM Limit | Reservation |
+|---------|-----------|-----------|-------------|
+| Vector | 2.0 | 2 GB | 1 GB |
+| Triage Agent ×4 | 1.5 each (6.0) | 2 GB each (8 GB) | 768 MB each |
+| Hunter Agent | 1.5 | 1.5 GB | 512 MB |
+| Merkle | 0.5 | 256 MB | 128 MB |
+| Prometheus | 0.5 | 512 MB | 256 MB |
+| Grafana | 0.25 | 256 MB | 128 MB |
+| RP Console | 0.25 | 256 MB | — |
+| LanceDB [full] | 1.0 | 2 GB | 768 MB |
+| **Total (base)** | **7.5** | **12.8 GB** | **5.8 GB** |
+| **Total (full)** | **8.5** | **14.8 GB** | **6.6 GB** |
+
+> ~2.5 GB headroom for macOS kernel + Docker VM overhead (base profile).
+
+---
+
 ## Prerequisites
+
+### Option A — PC1 + PC2 (Windows × 2)
 
 | Requirement | Both PCs |
 |---|---|
@@ -36,7 +100,19 @@ Right-sized for **6C/12T (12 logical CPUs), 16 GB RAM** per machine.
 | Network | Same LAN, can ping each other |
 | Repo | CLIF repo cloned to same path |
 
-## Quick Start
+### Option B — PC1 + MacBook M1
+
+| Requirement | PC1 (Windows) | MacBook (M1) |
+|---|---|---|
+| OS | Windows 10/11 | macOS 13+ (Ventura) |
+| Docker | Docker Desktop ≥ 4.25 | Docker Desktop for Mac ≥ 4.25 |
+| CPU / RAM | 6C/12T, 16 GB | 8 cores, 16 GB |
+| Network | Same LAN | Same LAN |
+| Repo | CLIF repo cloned | CLIF repo cloned |
+
+---
+
+## Quick Start — Option A (PC1 + PC2)
 
 ### Step 1 — PC1 (Data Tier)
 
@@ -83,9 +159,63 @@ npm run dev
 .\cluster\health-check.ps1 -Role all -DataIP 192.168.1.100
 ```
 
+---
+
+## Quick Start — Option B (PC1 + MacBook M1)
+
+### Step 1 — PC1 (Data Tier) — same as Option A
+
+```powershell
+cd C:\CLIF
+.\cluster\setup.ps1 -Role pc1
+.\cluster\firewall-pc1.ps1          # run as Administrator
+docker compose -f docker-compose.pc1.yml --env-file .env --env-file cluster\.env up -d
+```
+
+### Step 2 — MacBook M1 (Compute Tier)
+
+```bash
+cd ~/CLIF          # or wherever you cloned the repo
+
+# Setup: auto-detect LAN IP, test PC1 connectivity, write cluster/.env
+chmod +x cluster/setup-mac.sh cluster/health-check-mac.sh
+./cluster/setup-mac.sh --data-ip 192.168.1.100    # ← PC1's LAN IP
+
+# Build & start compute services (first run builds ARM images ~5-10 min)
+docker compose -f docker-compose.mac.yml --env-file .env --env-file cluster/.env up -d
+
+# (Optional) Include LanceDB:
+docker compose -f docker-compose.mac.yml --env-file .env --env-file cluster/.env --profile full up -d
+```
+
+### Step 3 — Verify (MacBook)
+
+```bash
+./cluster/health-check-mac.sh
+```
+
+### Adding Future Agents on MacBook
+
+New agents follow a simple pattern — add to `docker-compose.mac.yml`:
+
+```yaml
+  new-agent:
+    build: ./agents/new_agent
+    <<: *pc1-hosts                    # resolves PC1 hostnames
+    environment:
+      KAFKA_BROKERS: "${DATA_IP}:19092,${DATA_IP}:29092,${DATA_IP}:39092"
+      CLICKHOUSE_HOST: "${DATA_IP}"
+    deploy:
+      resources:
+        limits: { cpus: '1.5', memory: 2G }
+    restart: unless-stopped
+```
+
+---
+
 ## Dashboard Configuration
 
-Edit `dashboard/.env.local` on PC2:
+Edit `dashboard/.env.local` on PC2 or MacBook:
 
 ```env
 CH_HOST=192.168.1.100    # ← PC1's LAN IP (was localhost)
@@ -160,20 +290,29 @@ LANCEDB_URL=http://localhost:8100
 2. Test connectivity: `Test-NetConnection -ComputerName <PC1_IP> -Port 19092`
 3. Ensure both PCs are on same subnet (e.g., 192.168.1.x)
 
+### MacBook can't reach PC1
+1. Check Windows Firewall allows PC1 ports (run `firewall-pc1.ps1` as Admin)
+2. Test from Mac terminal: `nc -z <PC1_IP> 19092 && echo OK`
+3. Re-run setup: `./cluster/setup-mac.sh --data-ip <PC1_IP>`
+
 ### Redpanda Console shows no brokers
 - The console uses hostnames `pc1-rp01:19092` etc. resolved via `extra_hosts`
 - Verify `DATA_IP` in `cluster/.env` is correct
 - Restart: `docker compose -f docker-compose.pc2.yml restart redpanda-console`
+- On Mac: `docker compose -f docker-compose.mac.yml restart redpanda-console`
 
 ### Dashboard shows "connection refused"
 - Edit `dashboard/.env.local` → `CH_HOST` must be PC1's LAN IP, not `localhost`
 - Restart dashboard: `npm run dev`
 
 ### Falling back to single-machine mode
-```powershell
-# Stop cluster
+```bash
+# Stop cluster (Windows)
 docker compose -f docker-compose.pc1.yml down   # on PC1
 docker compose -f docker-compose.pc2.yml down   # on PC2
+
+# Stop cluster (MacBook)
+docker compose -f docker-compose.mac.yml down    # on Mac
 
 # Use original single-machine compose
 docker compose up -d
@@ -184,13 +323,16 @@ docker compose up -d
 ```
 CLIF/
 ├── docker-compose.yml          ← Original single-machine (unchanged)
-├── docker-compose.pc1.yml      ← PC1 data tier
-├── docker-compose.pc2.yml      ← PC2 compute tier
-├── .env                        ← Shared credentials (both PCs)
+├── docker-compose.pc1.yml      ← PC1 data tier (Windows)
+├── docker-compose.pc2.yml      ← PC2 compute tier (Windows)
+├── docker-compose.mac.yml      ← MacBook M1 compute tier (ARM64)
+├── .env                        ← Shared credentials (all machines)
 └── cluster/
     ├── .env                    ← Cluster-specific (DATA_IP, memory tuning)
-    ├── setup.ps1               ← Interactive setup script
-    ├── health-check.ps1        ← Cross-cluster health verification
+    ├── setup.ps1               ← Windows interactive setup
+    ├── setup-mac.sh            ← macOS setup (auto-detect IP, test connectivity)
+    ├── health-check.ps1        ← Windows cross-cluster health check
+    ├── health-check-mac.sh     ← macOS health check (local + remote)
     ├── firewall-pc1.ps1        ← Windows Firewall rules (run as Admin)
     ├── monitoring/
     │   ├── prometheus.yml      ← Prometheus config (cross-host targets)
