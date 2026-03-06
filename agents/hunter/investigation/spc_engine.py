@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
 from config import (
@@ -26,6 +25,7 @@ from config import (
     SPC_WINDOW_HOURS,
 )
 from models import SPCDeviation, SPCResult
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -164,8 +164,8 @@ class SPCEngine:
                 avg(event_count) AS mean_count,
                 stddevSamp(event_count) AS std_count
             FROM {CLICKHOUSE_DATABASE}.features_entity_freq
-            WHERE hostname = '{_s(hostname)}'
-              AND source_ip = '{_s(source_ip)}'
+            WHERE hostname = '{sanitize_sql(hostname)}'
+              AND source_ip = '{sanitize_sql(source_ip)}'
               AND window >= now() - INTERVAL {SPC_WINDOW_HOURS} HOUR
         """
         try:
@@ -181,13 +181,19 @@ class SPCEngine:
         return None
 
     def _query_current_count(self, hostname: str, source_ip: str) -> float:
-        """Count events for this entity in the last 1-hour window."""
+        """
+        Count events for this entity in the last 1-hour window.
+
+        Queries `features_entity_freq` (which aggregates from network_events,
+        security_events, and process_events via materialized views) so the
+        count covers ALL event types, not just network.
+        """
         q = f"""
-            SELECT count() as cnt
-            FROM {CLICKHOUSE_DATABASE}.network_events
-            WHERE hostname = '{_s(hostname)}'
-              AND toString(src_ip) = '{_s(source_ip)}'
-              AND timestamp >= now() - INTERVAL 1 HOUR
+            SELECT sum(event_count) AS cnt
+            FROM {CLICKHOUSE_DATABASE}.features_entity_freq
+            WHERE hostname = '{sanitize_sql(hostname)}'
+              AND source_ip = '{sanitize_sql(source_ip)}'
+              AND window >= now() - INTERVAL 1 HOUR
         """
         try:
             ch = _make_ch()
@@ -196,7 +202,3 @@ class SPCEngine:
         except Exception as exc:  # noqa: BLE001
             log.debug("SPC current count query failed: %s", exc)
             return 0.0
-
-
-def _s(value: Any) -> str:
-    return re.sub(r"[';\"\\]", "", str(value))

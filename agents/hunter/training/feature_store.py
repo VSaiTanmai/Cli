@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from config import CLICKHOUSE_DATABASE
 from models import FEATURE_ORDER, HunterVerdict
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -23,10 +24,8 @@ def write_training_row(
     """
     Insert one training row into `hunter_training_data`.
 
-    Parameters
-    ----------
-    verdict : HunterVerdict (must have feature_vector populated)
-    label   : 1 = positive / attack, 0 = negative / benign
+    Schema columns: alert_id, feature_vector, label, label_source,
+                    label_confidence, created_at
     """
     if not verdict.feature_vector or len(verdict.feature_vector) != len(FEATURE_ORDER):
         log.warning(
@@ -36,26 +35,24 @@ def write_training_row(
         return
 
     feature_json = json.dumps(verdict.feature_vector)
-    now_str = datetime.now(tz=timezone.utc).isoformat()
 
     # Convert finding_type to label_source description
     label_source = _determine_label_source(verdict)
+
+    # label_confidence maps from hunter_score (0-1)
+    label_confidence = verdict.hunter_score
 
     try:
         ch_client.command(
             f"""
             INSERT INTO {CLICKHOUSE_DATABASE}.hunter_training_data
-            (alert_id, feature_vector_json, label, label_source,
-             hunter_score, finding_type, is_fast_path, recorded_at)
+            (alert_id, feature_vector, label, label_source, label_confidence)
             VALUES (
-                '{_s(verdict.alert_id)}',
-                '{_s(feature_json)}',
+                '{sanitize_sql(verdict.alert_id)}',
+                '{sanitize_sql(feature_json)}',
                 {label},
-                '{_s(label_source)}',
-                {verdict.hunter_score:.6f},
-                '{_s(verdict.finding_type)}',
-                {int(verdict.is_fast_path)},
-                '{now_str}'
+                '{sanitize_sql(label_source)}',
+                {label_confidence:.6f}
             )
             """
         )
@@ -72,8 +69,3 @@ def _determine_label_source(verdict: HunterVerdict) -> str:
     if verdict.finding_type in ("FALSE_POSITIVE", "NORMAL_BEHAVIOUR"):
         return f"{prefix}_negative"
     return f"{prefix}_ambiguous"
-
-
-def _s(value: Any) -> str:
-    import re
-    return re.sub(r"[';\"\\]", "", str(value))

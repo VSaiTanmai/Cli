@@ -36,6 +36,7 @@ KAFKA_BROKERS: str = _env("KAFKA_BROKERS", "redpanda01:9092")
 CONSUMER_GROUP_ID: str = _env("CONSUMER_GROUP_ID", "clif-hunter-agent")
 TOPIC_HUNTER_TASKS: str = _env("TOPIC_HUNTER_TASKS", "hunter-tasks")
 TOPIC_HUNTER_RESULTS: str = _env("TOPIC_HUNTER_RESULTS", "hunter-results")
+TOPIC_DEAD_LETTER: str = _env("TOPIC_DEAD_LETTER", "dead-letter")
 KAFKA_AUTO_OFFSET_RESET: str = _env("KAFKA_AUTO_OFFSET_RESET", "earliest")
 KAFKA_MAX_POLL_RECORDS: int = _int("KAFKA_MAX_POLL_RECORDS", 10)
 
@@ -45,8 +46,8 @@ KAFKA_MAX_POLL_RECORDS: int = _int("KAFKA_MAX_POLL_RECORDS", 10)
 CLICKHOUSE_HOST: str = _env("CLICKHOUSE_HOST", "clickhouse01")
 CLICKHOUSE_PORT: int = _int("CLICKHOUSE_PORT", 8123)
 CLICKHOUSE_USER: str = _env("CLICKHOUSE_USER", "clif_admin")
-CLICKHOUSE_PASSWORD: str = _env("CLICKHOUSE_PASSWORD", "")
-CLICKHOUSE_DATABASE: str = _env("CLICKHOUSE_DATABASE", "clif_logs")
+CLICKHOUSE_PASSWORD: str = _env("CLICKHOUSE_PASSWORD", "clif_secure_password_change_me")
+CLICKHOUSE_DATABASE: str = _env("CLICKHOUSE_DATABASE", _env("CLICKHOUSE_DB", "clif_logs"))
 
 # ---------------------------------------------------------------------------
 # LanceDB HTTP service

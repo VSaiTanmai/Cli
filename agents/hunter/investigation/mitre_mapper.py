@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Any, Dict, List
 
 from config import CLICKHOUSE_DATABASE
 from models import MITREMatch, MITREResult
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> MITREResult:
 
     try:
         if active:
-            arr_literal = "[" + ",".join(f"'{_s(f)}'" for f in active) + "]"
+            arr_literal = "[" + ",".join(f"'{sanitize_sql(f)}'" for f in active) + "]"
             q = f"""
                 SELECT rule_id, mitre_id, mitre_name, mitre_tactic,
                        toString(confidence) AS confidence_str
@@ -153,7 +153,3 @@ def _detect_off_hours() -> bool:
     from datetime import datetime, timezone
     hour = datetime.now(tz=timezone.utc).hour
     return not (8 <= hour < 18)
-
-
-def _s(value: Any) -> str:
-    return re.sub(r"[';\"\\]", "", str(value))

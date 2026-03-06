@@ -15,7 +15,7 @@ from models import FEATURE_ORDER
 # ---------------------------------------------------------------------------
 HEURISTIC_WEIGHTS: Dict[str, float] = {
     # Triage passthrough – already well-validated signals
-    "adjusted_score": 0.15,
+    "adjusted_score": 0.13,
     "base_score": 0.04,
     "entity_risk": 0.04,
     "ioc_boost": 0.05,
@@ -68,7 +68,10 @@ HEURISTIC_WEIGHTS: Dict[str, float] = {
 
 # Sanity check at import time
 _weight_sum = round(
-    sum(abs(v) for v in HEURISTIC_WEIGHTS.values()), 6
+    sum(HEURISTIC_WEIGHTS.values()), 6
+)
+assert abs(_weight_sum - 1.0) < 1e-4, (
+    f"Heuristic weights must sum to 1.00, got {_weight_sum}"
 )
 # Tolerant check — negative weight for false_positive_count is intentional
 assert len(HEURISTIC_WEIGHTS) == len(FEATURE_ORDER), (

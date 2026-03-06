@@ -1,7 +1,7 @@
 """
 Label Builder – generates training labels from hunter verdicts.
 
-Label hierarchy (ORDER BY CASE in the SQL training query):
+Label hierarchy:
   1. CONFIRMED_ATTACK / ACTIVE_CAMPAIGN → label = 1
   2. FALSE_POSITIVE / NORMAL_BEHAVIOUR  → label = 0
   3. BEHAVIOURAL_ANOMALY / SIGMA_MATCH  → label = 1 (ambiguous-positive)
@@ -9,8 +9,11 @@ Label hierarchy (ORDER BY CASE in the SQL training query):
   5. else                               → label = 0
 
 Guards:
-  - is_fast_path=True rows are EXCLUDED (Sigma skipped full investigation)
+  - is_fast_path=True rows are EXCLUDED in-process (before write)
   - A minimum of 10% of the training set must be negatives
+
+Schema columns (hunter_training_data):
+  alert_id, feature_vector, label, label_source, label_confidence, created_at
 """
 from __future__ import annotations
 
@@ -81,13 +84,17 @@ def fetch_training_set(
     min_samples: int,
 ) -> Optional[List[Dict[str, Any]]]:
     """
-    Fetch training rows from ClickHouse with the label hierarchy applied.
+    Fetch training rows from ClickHouse.
 
     Returns None if insufficient data; otherwise a list of dicts with
     keys: feature_vector_json, label
+
+    Note: The schema stores label as UInt8 (already computed at write time
+    by feature_store.write_training_row via get_label()). No need to
+    re-derive from finding_type since finding_type is not in the schema.
     """
     try:
-        count_q = f"SELECT count() FROM {CLICKHOUSE_DATABASE}.hunter_training_data WHERE is_fast_path = 0"
+        count_q = f"SELECT count() FROM {CLICKHOUSE_DATABASE}.hunter_training_data"
         rows = ch_client.query(count_q).result_rows
         total = int(rows[0][0]) if rows else 0
 
@@ -99,17 +106,10 @@ def fetch_training_set(
 
         q = f"""
             SELECT
-                feature_vector_json,
-                CASE
-                    WHEN finding_type IN ('CONFIRMED_ATTACK', 'ACTIVE_CAMPAIGN') THEN 1
-                    WHEN finding_type IN ('FALSE_POSITIVE', 'NORMAL_BEHAVIOUR')  THEN 0
-                    WHEN finding_type IN ('BEHAVIOURAL_ANOMALY', 'SIGMA_MATCH')  THEN 1
-                    WHEN finding_type = 'ANOMALOUS_PATTERN'                      THEN 1
-                    ELSE 0
-                END AS label
+                feature_vector,
+                label
             FROM {CLICKHOUSE_DATABASE}.hunter_training_data
-            WHERE is_fast_path = 0
-            ORDER BY recorded_at DESC
+            ORDER BY created_at DESC
             LIMIT 50000
         """
         rows = ch_client.query(q).result_rows

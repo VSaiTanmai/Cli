@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Any, Dict
 
 from config import CLICKHOUSE_DATABASE, INVESTIGATION_WINDOW_MIN
 from models import GraphResult
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -33,9 +33,9 @@ async def run(
 
 
 def _query(payload: Dict[str, Any], ch_client: Any) -> GraphResult:
-    hostname = _s(payload.get("hostname", ""))
-    source_ip = _s(payload.get("source_ip", ""))
-    user_id = _s(payload.get("user_id", ""))
+    hostname = sanitize_sql(payload.get("hostname", ""))
+    source_ip = sanitize_sql(payload.get("source_ip", ""))
+    user_id = sanitize_sql(payload.get("user_id", ""))
 
     result = GraphResult()
 
@@ -143,7 +143,3 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> GraphResult:
         log.warning("GraphBuilder failed for %s/%s: %s", hostname, source_ip, exc)
 
     return result
-
-
-def _s(value: Any) -> str:
-    return re.sub(r"[';\"\\]", "", str(value))

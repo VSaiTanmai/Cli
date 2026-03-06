@@ -1,0 +1,230 @@
+# =============================================================================
+# CLIF Minimal E2E Pipeline — EPS Benchmark Only
+# =============================================================================
+# Keeper + ClickHouse + Redpanda + Consumer = full pipeline, nothing else
+# Total: ~2.5GB RAM (safe on 7.6GB Docker / 16GB system)
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "2"
+
+networks:
+  clif-net:
+    driver: bridge
+
+volumes:
+  clickhouse_data:
+  clickhouse_keeper_data:
+  redpanda_data:
+
+services:
+
+  clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:24.8
+    container_name: clif-clickhouse-keeper
+    hostname: clickhouse-keeper
+    volumes:
+      - clickhouse_keeper_data:/var/lib/clickhouse-keeper
+      - ./clickhouse/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    networks:
+      - clif-net
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-keeper-client -h localhost -p 2181 -q 'ruok' | grep -q imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: "1"
+
+  clickhouse01:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clif-clickhouse01
+    hostname: clickhouse01
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/node01_config_single.xml:/etc/clickhouse-server/config.d/clusters.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./clickhouse/storage_policy_local.xml:/etc/clickhouse-server/config.d/storage_policy.xml:ro
+      - ./clickhouse/schema_local.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    depends_on:
+      clickhouse-keeper:
+        condition: service_healthy
+    networks:
+      - clif-net
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user ${CLICKHOUSE_USER:-clif_admin} --password ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me} --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "4"
+
+  redpanda01:
+    image: redpandadata/redpanda:v24.2.8
+    container_name: clif-redpanda01
+    hostname: redpanda01
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda01:9092,external://localhost:19092
+      - --rpc-addr 0.0.0.0:33145
+      - --advertise-rpc-addr redpanda01:33145
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda01:8082,external://localhost:18082
+      - --smp 1
+      - --memory 700M
+      - --reserve-memory 100M
+      - --default-log-level=warn
+      - --overprovisioned
+      - --unsafe-bypass-fsync=true
+      - --lock-memory=false
+      - --seeds redpanda01:33145
+    ports:
+      - "19092:19092"
+      - "18082:18082"
+      - "9644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - clif-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9644/v1/status/ready || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 900M
+          cpus: "2"
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.8
+    container_name: clif-redpanda-init
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        BROKER="redpanda01:9092"
+        for TOPIC in raw-logs security-events process-events network-events \
+                     templated-logs triage-scores anomaly-alerts \
+                     hunter-tasks hunter-results verifier-tasks verifier-results \
+                     feedback-labels dead-letter pipeline-commands; do
+          rpk topic create "$$TOPIC" \
+            --brokers "$$BROKER" \
+            --partitions 3 \
+            --replicas 1 \
+            --topic-config retention.ms=604800000 \
+            --topic-config cleanup.policy=delete \
+            --topic-config compression.type=producer \
+            --topic-config max.message.bytes=10485760 || true
+        done
+        echo "Topics created."
+    networks:
+      - clif-net
+
+  clif-vector:
+    build:
+      context: ./vector
+      dockerfile: Dockerfile
+      target: development
+    container_name: clif-vector
+    hostname: clif-vector
+    ports:
+      - "1514:1514"
+      - "1514:1514/udp"
+      - "8686:8686"
+      - "8687:8687"
+      - "9514:9514"
+    environment:
+      VECTOR_KAFKA_BROKERS: redpanda01:9092
+      VECTOR_LOG: info
+      VECTOR_THREADS: 2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+    networks:
+      - clif-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8686/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "2"
+
+  clif-consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: clif-consumer
+    hostname: clif-consumer
+    environment:
+      KAFKA_BROKERS: redpanda01:9092
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CONSUMER_GROUP_ID: clif-clickhouse-consumer
+      CONSUMER_BATCH_SIZE: 50000
+      CONSUMER_FLUSH_INTERVAL_SEC: 1.0
+      CONSUMER_MAX_RETRIES: 5
+      CONSUMER_POLL_BATCH: 5000
+      CONSUMER_FLUSH_WORKERS: 2
+      LOG_LEVEL: INFO
+    depends_on:
+      clickhouse01:
+        condition: service_healthy
+      redpanda01:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    networks:
+      - clif-net
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "2"

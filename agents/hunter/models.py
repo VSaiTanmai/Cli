@@ -217,9 +217,12 @@ class MLResult:
 class DriftReport:
     """Drift detection output written to hunter_model_health."""
     kl_divergence: float = 0.0
-    psi: float = 0.0
-    triage_anchor_divergence: float = 0.0
-    drift_detected: bool = False
+    psi_max: float = 0.0
+    triage_divergence: float = 0.0
+    triage_bias: float = 0.0
+    is_drifting: bool = False
+    sample_count: int = 0
+    scorer_mode: str = "heuristic"  # "heuristic" | "catboost"
     affected_features: List[str] = field(default_factory=list)
 
 

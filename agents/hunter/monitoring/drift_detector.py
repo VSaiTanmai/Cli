@@ -8,6 +8,10 @@ Three signals are combined:
   3. Triage-Anchored Divergence – mean score drift between the two windows
 
 Results are written to `hunter_model_health` table.
+
+Schema columns (hunter_model_health):
+  check_time, scorer_mode, kl_divergence, psi_max, triage_divergence,
+  triage_bias, is_drifting, sample_count, alerts
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ from config import (
     DRIFT_PSI_THRESHOLD,
 )
 from models import FEATURE_ORDER, DriftReport
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -42,15 +47,16 @@ _NUM_BINS = 10  # PSI bin count
 
 
 class DriftDetector:
-    def __init__(self, ch_client: Any) -> None:
+    def __init__(self, ch_client: Any, scorer_mode: str = "heuristic") -> None:
         self._ch = ch_client
+        self._scorer_mode = scorer_mode
 
     async def check_drift(self) -> DriftReport:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._run_drift_check)
 
     def _run_drift_check(self) -> DriftReport:
-        report = DriftReport()
+        report = DriftReport(scorer_mode=self._scorer_mode)
 
         try:
             baseline_vectors = self._fetch_vectors(days=DRIFT_BASELINE_DAYS)
@@ -59,6 +65,8 @@ class DriftDetector:
             if len(baseline_vectors) < 10 or len(current_vectors) < 5:
                 log.debug("Insufficient data for drift detection")
                 return report
+
+            report.sample_count = len(baseline_vectors) + len(current_vectors)
 
             baseline_arr = np.array(baseline_vectors, dtype=np.float32)
             current_arr = np.array(current_vectors, dtype=np.float32)
@@ -80,19 +88,20 @@ class DriftDetector:
             for idx in PSI_FEATURE_INDICES:
                 psi = _psi(baseline_arr[:, idx], current_arr[:, idx])
                 psi_values.append(psi)
-            report.psi = float(np.mean(psi_values))
+            report.psi_max = float(np.max(psi_values))
 
             # --- Triage-anchored divergence ---
             b_score_idx = FEATURE_ORDER.index("adjusted_score")
             b_mean = float(np.mean(baseline_arr[:, b_score_idx]))
             c_mean = float(np.mean(current_arr[:, b_score_idx]))
-            report.triage_anchor_divergence = abs(b_mean - c_mean)
+            report.triage_divergence = abs(b_mean - c_mean)
+            report.triage_bias = c_mean - b_mean  # signed: positive = scores rising
 
             # --- Overall drift flag ---
-            report.drift_detected = (
+            report.is_drifting = (
                 report.kl_divergence > DRIFT_KL_THRESHOLD
-                or report.psi > DRIFT_PSI_THRESHOLD
-                or report.triage_anchor_divergence > 0.1
+                or report.psi_max > DRIFT_PSI_THRESHOLD
+                or report.triage_divergence > 0.1
             )
 
             # --- Persist to ClickHouse ---
@@ -105,11 +114,10 @@ class DriftDetector:
 
     def _fetch_vectors(self, days: int) -> List[List[float]]:
         q = f"""
-            SELECT feature_vector_json
+            SELECT feature_vector
             FROM {CLICKHOUSE_DATABASE}.hunter_training_data
-            WHERE is_fast_path = 0
-              AND recorded_at >= now() - INTERVAL {days} DAY
-            ORDER BY recorded_at DESC
+            WHERE created_at >= now() - INTERVAL {days} DAY
+            ORDER BY created_at DESC
             LIMIT 5000
         """
         rows = self._ch.query(q).result_rows
@@ -125,20 +133,24 @@ class DriftDetector:
 
     def _write_health_record(self, report: DriftReport) -> None:
         now = datetime.now(tz=timezone.utc).isoformat()
-        affected_json = json.dumps(report.affected_features)
+        alerts_json = json.dumps(report.affected_features)
         try:
             self._ch.command(
                 f"""
                 INSERT INTO {CLICKHOUSE_DATABASE}.hunter_model_health
-                (recorded_at, kl_divergence, psi, triage_anchor_divergence,
-                 drift_detected, affected_features_json)
+                (check_time, scorer_mode, kl_divergence, psi_max,
+                 triage_divergence, triage_bias, is_drifting,
+                 sample_count, alerts)
                 VALUES (
                     '{now}',
+                    '{sanitize_sql(report.scorer_mode)}',
                     {report.kl_divergence:.6f},
-                    {report.psi:.6f},
-                    {report.triage_anchor_divergence:.6f},
-                    {int(report.drift_detected)},
-                    '{_s(affected_json)}'
+                    {report.psi_max:.6f},
+                    {report.triage_divergence:.6f},
+                    {report.triage_bias:.6f},
+                    {int(report.is_drifting)},
+                    {report.sample_count},
+                    '{sanitize_sql(alerts_json)}'
                 )
                 """
             )
@@ -183,8 +195,3 @@ def _psi(expected: np.ndarray, actual: np.ndarray, bins: int = _NUM_BINS) -> flo
     a_frac = np.where(a_frac == 0, eps, a_frac)
 
     return float(np.sum((a_frac - e_frac) * np.log(a_frac / e_frac)))
-
-
-def _s(value: Any) -> str:
-    import re
-    return re.sub(r"[';\"\\]", "", str(value))

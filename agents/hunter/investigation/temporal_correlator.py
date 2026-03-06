@@ -17,6 +17,7 @@ from config import (
     INVESTIGATION_WINDOW_MIN,
 )
 from models import TemporalResult
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -49,8 +50,8 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> TemporalResult:
         q1 = f"""
             SELECT count() AS escalation_count
             FROM {CLICKHOUSE_DATABASE}.triage_scores
-            WHERE hostname = '{_s(hostname)}'
-              AND source_ip = '{_s(source_ip)}'
+            WHERE hostname = '{sanitize_sql(hostname)}'
+              AND source_ip = '{sanitize_sql(source_ip)}'
               AND adjusted_score > {trigger_score:.4f}
               AND timestamp >= now() - INTERVAL {INVESTIGATION_WINDOW_MIN} MINUTE
         """
@@ -66,8 +67,8 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> TemporalResult:
                 countDistinct(mitre_tactic) AS tactic_diversity,
                 avg(adjusted_score) AS mean_score
             FROM {CLICKHOUSE_DATABASE}.triage_scores
-            WHERE hostname = '{_s(hostname)}'
-              AND (source_ip = '{_s(source_ip)}' OR user_id = '{_s(user_id)}')
+            WHERE hostname = '{sanitize_sql(hostname)}'
+              AND (source_ip = '{sanitize_sql(source_ip)}' OR user_id = '{sanitize_sql(user_id)}')
               AND timestamp >= now() - INTERVAL {INVESTIGATION_WINDOW_MIN} MINUTE
         """
         rows = ch_client.query(q2).result_rows
@@ -82,8 +83,8 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> TemporalResult:
         q3 = f"""
             SELECT toString(event_id)
             FROM {CLICKHOUSE_DATABASE}.triage_scores
-            WHERE hostname = '{_s(hostname)}'
-              AND (source_ip = '{_s(source_ip)}' OR user_id = '{_s(user_id)}')
+            WHERE hostname = '{sanitize_sql(hostname)}'
+              AND (source_ip = '{sanitize_sql(source_ip)}' OR user_id = '{sanitize_sql(user_id)}')
               AND timestamp >= now() - INTERVAL {INVESTIGATION_WINDOW_MIN} MINUTE
             LIMIT 50
         """
@@ -94,9 +95,3 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> TemporalResult:
         log.warning("TemporalCorrelator failed for %s/%s: %s", hostname, source_ip, exc)
 
     return result
-
-
-def _s(value: str) -> str:
-    """Minimal SQL-injection sanitiser."""
-    import re
-    return re.sub(r"[';\"\\]", "", str(value))

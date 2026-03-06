@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import uuid
 from typing import Any, Dict, List, Optional
 
 from config import CLICKHOUSE_DATABASE, INVESTIGATION_WINDOW_MIN
 from models import CampaignResult
+from utils import sanitize_sql
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ async def run(
 
 
 def _query(payload: Dict[str, Any], ch_client: Any) -> CampaignResult:
-    source_ip = _s(payload.get("source_ip", ""))
-    user_id = _s(payload.get("user_id", ""))
+    source_ip = sanitize_sql(payload.get("source_ip", ""))
+    user_id = sanitize_sql(payload.get("user_id", ""))
 
     result = CampaignResult()
 
@@ -90,7 +90,3 @@ def _query(payload: Dict[str, Any], ch_client: Any) -> CampaignResult:
         log.warning("CampaignDetector failed for source_ip=%s: %s", source_ip, exc)
 
     return result
-
-
-def _s(value: Any) -> str:
-    return re.sub(r"[';\"\\]", "", str(value))

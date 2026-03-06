@@ -94,6 +94,7 @@ services:
       - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
       - ./clickhouse/storage_policy.xml:/etc/clickhouse-server/config.d/storage_policy.xml:ro
       - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./clickhouse/hunter_schema.sql:/docker-entrypoint-initdb.d/002_hunter_schema.sql:ro
     depends_on:
       clickhouse-keeper:
         condition: service_healthy
@@ -145,6 +146,7 @@ services:
       - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
       - ./clickhouse/storage_policy.xml:/etc/clickhouse-server/config.d/storage_policy.xml:ro
       - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./clickhouse/hunter_schema.sql:/docker-entrypoint-initdb.d/002_hunter_schema.sql:ro
     depends_on:
       clickhouse-keeper:
         condition: service_healthy
@@ -1243,8 +1245,8 @@ services:
       CLICKHOUSE_HOST: clickhouse01
       CLICKHOUSE_PORT: ${CLICKHOUSE_HTTP_PORT:-8123}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-Cl1f_Ch@ngeM3_2026!}
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-clif_logs}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-clif_logs}
       # -- LanceDB (requires --profile full for full vector similarity) --
       LANCEDB_URL: "http://lancedb:8100"
       LANCEDB_TIMEOUT_SEC: "3.0"
