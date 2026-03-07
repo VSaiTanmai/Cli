@@ -710,6 +710,11 @@ CREATE TABLE IF NOT EXISTS clif_logs.verifier_results
     priority          Enum8('P4'=0, 'P3'=1, 'P2'=2, 'P1'=3)     CODEC(ZSTD(1)),
     recommended_action String       DEFAULT ''                    CODEC(ZSTD(3)),
     analyst_summary   String        DEFAULT ''                    CODEC(ZSTD(3)),
+    -- Full report & attack graph
+    report_narrative  String        DEFAULT ''                    CODEC(ZSTD(3)),
+    evidence_json     String        DEFAULT ''                    CODEC(ZSTD(3)),
+    -- XAI: structured decision trail (decision path, calibration, per-check details)
+    explanation_json  String        DEFAULT ''                    CODEC(ZSTD(3)),
 
     INDEX idx_verdict  verdict      TYPE set(5)                   GRANULARITY 1,
     INDEX idx_priority priority     TYPE set(5)                   GRANULARITY 1,

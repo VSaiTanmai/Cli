@@ -13,6 +13,7 @@ from typing import Any, Dict
 
 from aiokafka import AIOKafkaProducer  # type: ignore
 
+import message_signer
 from models import HunterVerdict
 from training import feature_store, label_builder
 
@@ -42,6 +43,7 @@ class OutputWriter:
                 topic,
                 value=value_bytes,
                 key=key_bytes,
+                headers=message_signer.make_headers(value_bytes),
             )
             log.debug(
                 "Published verdict alert_id=%s finding_type=%s score=%.3f",

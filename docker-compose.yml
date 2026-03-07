@@ -570,6 +570,7 @@ services:
       CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-5}
       CONSUMER_POLL_BATCH: ${CONSUMER_POLL_BATCH:-50000}
       CONSUMER_FLUSH_WORKERS: ${CONSUMER_FLUSH_WORKERS:-6}
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
       LOG_LEVEL: INFO
     depends_on:
       clickhouse01:
@@ -944,7 +945,7 @@ services:
       TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
       TOPIC_HUNTER_TASKS: "hunter-tasks"
       TOPIC_DEAD_LETTER: "dead-letter"
-      # â”€â”€ ClickHouse (feature queries + score persistence) â”€â”€
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
       CLICKHOUSE_HOST: clickhouse01
       CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
@@ -1048,7 +1049,7 @@ services:
       TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
       TOPIC_HUNTER_TASKS: "hunter-tasks"
       TOPIC_DEAD_LETTER: "dead-letter"
-      CLICKHOUSE_HOST: clickhouse01
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
       CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
@@ -1143,7 +1144,7 @@ services:
       TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
       TOPIC_HUNTER_TASKS: "hunter-tasks"
       TOPIC_DEAD_LETTER: "dead-letter"
-      CLICKHOUSE_HOST: clickhouse01
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
       CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
@@ -1244,6 +1245,7 @@ services:
       TOPIC_HUNTER_TASKS: "hunter-tasks"
       TOPIC_HUNTER_RESULTS: "hunter-results"
       TOPIC_DEAD_LETTER: "dead-letter"
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
       # -- ClickHouse (clickhouse-connect uses HTTP port 8123) --
       CLICKHOUSE_HOST: clickhouse01
       CLICKHOUSE_PORT: ${CLICKHOUSE_HTTP_PORT:-8123}
@@ -1314,7 +1316,7 @@ services:
       TOPIC_ANOMALY_ALERTS: "anomaly-alerts"
       TOPIC_HUNTER_TASKS: "hunter-tasks"
       TOPIC_DEAD_LETTER: "dead-letter"
-      CLICKHOUSE_HOST: clickhouse01
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
       CLICKHOUSE_PORT: ${CLICKHOUSE_NATIVE_PORT:-9000}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
@@ -1392,3 +1394,64 @@ services:
         reservations:
           cpus: '1'
           memory: 1G
+
+  # ── Verifier Agent ──
+  clif-verifier-agent:
+    container_name: clif-verifier-agent
+    hostname: clif-verifier-agent
+    build:
+      context: ./agents/verifier
+      dockerfile: Dockerfile
+    environment:
+      # -- Kafka / Redpanda --
+      KAFKA_BROKERS: "redpanda01:9092"
+      CONSUMER_GROUP_ID: "clif-verifier-agent"
+      TOPIC_INPUT: "hunter-results"
+      TOPIC_OUTPUT: "verifier-results"
+      CLIF_HMAC_KEY: ${CLIF_HMAC_KEY:-clif-default-hmac-key-change-me}
+      # -- ClickHouse (clickhouse-connect uses HTTP port 8123) --
+      CLICKHOUSE_HOST: clickhouse01
+      CLICKHOUSE_PORT: ${CLICKHOUSE_HTTP_PORT:-8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clif_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clif_secure_password_change_me}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-clif_logs}
+      # -- LanceDB --
+      LANCEDB_URL: "http://lancedb:8100"
+      # -- Verifier pipeline --
+      VERIFIER_PORT: "8500"
+      SKIP_NEGATIVE_VERDICTS: "true"
+      TIMELINE_WINDOW_HOURS: "24"
+      FP_SIMILARITY_THRESHOLD: "0.3"
+      IOC_LOOKBACK_HOURS: "72"
+      EVIDENCE_LOOKBACK_HOURS: "2"
+      LOG_LEVEL: INFO
+    ports:
+      - "8500:8500"
+    depends_on:
+      redpanda01:
+        condition: service_healthy
+      clickhouse01:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      clif-hunter-agent:
+        condition: service_healthy
+    networks:
+      - clif-backend
+      - clif-storage
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8500/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M

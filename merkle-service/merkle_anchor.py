@@ -209,14 +209,16 @@ def ensure_bucket_with_lock(s3) -> bool:
             Bucket=S3_BUCKET,
             ObjectLockEnabledForBucket=True,
         )
-        # Set default retention: GOVERNANCE mode, 365 days
+        # Set default retention: COMPLIANCE mode, 365 days
+        # COMPLIANCE mode ensures even root/admin cannot delete evidence
+        # within the retention window — required for legal defensibility.
         s3.put_object_lock_configuration(
             Bucket=S3_BUCKET,
             ObjectLockConfiguration={
                 "ObjectLockEnabled": "Enabled",
                 "Rule": {
                     "DefaultRetention": {
-                        "Mode": "GOVERNANCE",
+                        "Mode": "COMPLIANCE",
                         "Days": 365,
                     }
                 },

@@ -22,6 +22,7 @@ Investigation flow per message:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -52,6 +53,7 @@ from config import (
     TOPIC_HUNTER_RESULTS,
     TOPIC_HUNTER_TASKS,
 )
+import message_signer
 from attack_graph import build_attack_graph
 from fusion import FusionEngine
 from models import MLResult as _MLResult
@@ -108,6 +110,33 @@ def _new_ch_client():
         password=CLICKHOUSE_PASSWORD,
         database=CLICKHOUSE_DATABASE,
     )
+
+
+# ---------------------------------------------------------------------------
+# Model fingerprinting — SHA-256 hash of CatBoost model file on disk
+# ---------------------------------------------------------------------------
+_cached_model_hash: Optional[str] = None
+
+
+def _model_hash() -> str:
+    """Return SHA-256 hash of the CatBoost model file (cached after first call)."""
+    global _cached_model_hash
+    if _cached_model_hash is not None:
+        return _cached_model_hash
+    try:
+        from config import CATBOOST_MODEL_PATH
+        path = CATBOOST_MODEL_PATH
+        if path.exists():
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            _cached_model_hash = h.hexdigest()
+        else:
+            _cached_model_hash = "heuristic_no_model_file"
+    except Exception:
+        _cached_model_hash = "hash_unavailable"
+    return _cached_model_hash
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +265,10 @@ async def _consume_loop() -> None:
 
     async for msg in consumer:
         _stats["messages_received"] += 1
+        if not message_signer.extract_and_verify(msg.value, msg.headers):
+            _stats["errors"] += 1
+            log.warning("HMAC verification failed for message offset=%s", msg.offset)
+            continue
         try:
             await _process_message(msg.value)
             _stats["messages_processed"] += 1
@@ -406,7 +439,12 @@ async def _process_message(payload: Dict[str, Any]) -> None:
 
     evidence = {
         "sigma_hits": [
-            {"rule_id": h.rule_id, "title": h.rule_title, "severity": h.severity}
+            {
+                "rule_id": h.rule_id,
+                "title": h.rule_title,
+                "severity": h.severity,
+                "matched_fields": h.matched_fields,
+            }
             for h in sigma_hits
         ],
         "spc_z_score": spc_result.max_z_score,
@@ -414,6 +452,8 @@ async def _process_message(payload: Dict[str, Any]) -> None:
         "has_ioc_neighbor": graph_result.has_ioc_neighbor,
         "campaign_detected": campaign_result.is_campaign,
         "ml_model": ml_result.model_used,
+        "ml_model_hash": _model_hash(),
+        "feature_vector": feature_vector,
         "attack_graph_mermaid": attack_graph_data["mermaid"],
         "attack_graph": attack_graph_data["graph"],
     }

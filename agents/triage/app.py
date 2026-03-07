@@ -45,6 +45,7 @@ from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from flask import Flask, jsonify
 
 import config
+import message_signer
 from drain3_miner import Drain3Miner
 from feature_extractor import ConnectionTracker, FeatureExtractor, FEATURE_NAMES
 from model_ensemble import ModelEnsemble
@@ -281,6 +282,13 @@ class TriageProcessor:
         version = self._ensemble.manifest.get("version", "unknown")
         self._fusion._model_version = version
 
+        # Feature attribution (SHAP-like) — uses LightGBM for perturbation
+        from shap_explainer import FeatureAttributor
+        self._attributor = FeatureAttributor(
+            self._ensemble._lgbm,
+            list(FEATURE_NAMES),
+        )
+
         # ─── Startup self-test ─────────────────────────────────────────
         if config.SELFTEST_ENABLED:
             self._run_selftest()
@@ -492,6 +500,15 @@ class TriageProcessor:
         # ── Step 3: Score fusion + routing ──────────────────────────────
         valid_events = [events[i] for i in valid_indices]
         results = self._fusion.fuse_batch(model_scores, features_list, valid_events)
+
+        # ── Step 3b: Feature attribution for escalated events ───────────
+        # Computes SHAP-like per-feature contributions for events
+        # routed to "escalate" — populates shap_top_features/shap_summary.
+        actions = [r.action for r in results]
+        shap_results = self._attributor.explain_batch_escalated(X, actions)
+        for r, (shap_json, shap_text) in zip(results, shap_results):
+            r.shap_top_features = shap_json
+            r.shap_summary = shap_text
 
         # ── Step 4: Write to arf_replay_buffer + online ARF learning ───
         if results and self._ch_client is not None:
@@ -796,11 +813,13 @@ class TriageAgent:
                 result_dict["event_id"] = str(uuid.uuid4())
 
             payload = orjson.dumps(result_dict)
+            hmac_headers = message_signer.make_headers(payload)
 
             # Always publish to triage-scores
             self._producer.produce(
                 topic=config.TOPIC_TRIAGE_SCORES,
                 value=payload,
+                headers=hmac_headers,
                 callback=_delivery_callback,
             )
 
@@ -809,6 +828,7 @@ class TriageAgent:
                 self._producer.produce(
                     topic=config.TOPIC_ANOMALY_ALERTS,
                     value=payload,
+                    headers=hmac_headers,
                     callback=_delivery_callback,
                 )
                 # Publish to hunter-tasks work queue so the Hunter Agent
@@ -817,6 +837,7 @@ class TriageAgent:
                 self._producer.produce(
                     topic=config.TOPIC_HUNTER_TASKS,
                     value=payload,
+                    headers=hmac_headers,
                     callback=_delivery_callback,
                 )
 

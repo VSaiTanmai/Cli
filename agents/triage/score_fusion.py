@@ -62,6 +62,8 @@ class TriageResult:
     ioc_confidence: int
     mitre_tactic: str
     mitre_technique: str
+    shap_top_features: str  # JSON: top-5 feature contributions
+    shap_summary: str       # human-readable attribution sentence
     features_stale: int
     model_version: str
     disagreement_flag: int
@@ -574,6 +576,8 @@ class ScoreFusion:
                     ioc_confidence=ioc_confidence,
                     mitre_tactic=mitre_tactic,
                     mitre_technique=mitre_technique,
+                    shap_top_features="",
+                    shap_summary="",
                     features_stale=features_stale,
                     model_version=self._model_version,
                     disagreement_flag=disagreement,
@@ -611,6 +615,8 @@ class ScoreFusion:
             ioc_confidence=0,
             mitre_tactic="",
             mitre_technique="",
+            shap_top_features="",
+            shap_summary="",
             features_stale=0,
             model_version=self._model_version,
             disagreement_flag=0,

@@ -50,6 +50,7 @@ import uuid as _uuid_mod
 
 from confluent_kafka import Consumer, Producer, KafkaError, KafkaException
 from clickhouse_driver import Client as CHClient
+import message_signer
 
 # ── Deterministic event_id from Kafka coordinates ────────────────────────────
 # Both the consumer and triage agent read the same Kafka messages.
@@ -130,6 +131,9 @@ TOPICS = list(TOPIC_TABLE_MAP.keys())
 
 # Ingestion-tier tables that receive a deterministic event_id from Kafka coords
 _INPUT_TABLES = {"raw_logs", "security_events", "process_events", "network_events"}
+
+# Agent-produced tables that must pass HMAC verification
+_AGENT_TABLES = {"triage_scores", "hunter_investigations", "verifier_results"}
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -454,6 +458,9 @@ def _build_verifier_result_row(msg: dict) -> list:
         _safe_str(msg.get("priority"), "P4"),          # priority (Enum8)
         _safe_str(msg.get("recommended_action")),      # recommended_action
         _safe_str(msg.get("analyst_summary")),         # analyst_summary
+        _safe_str(msg.get("report_narrative")),        # report_narrative
+        _safe_str(msg.get("evidence_json")),           # evidence_json
+        _safe_str(msg.get("explanation_json")),        # explanation_json (XAI decision trail)
     ]
 
 
@@ -533,6 +540,7 @@ VERIFIER_RESULTS_COLUMNS = [
     "verdict", "confidence", "evidence_verified", "merkle_batch_ids",
     "timeline_json", "ioc_correlations",
     "priority", "recommended_action", "analyst_summary",
+    "report_narrative", "evidence_json", "explanation_json",
 ]
 FEEDBACK_LABELS_COLUMNS = [
     "event_id", "score_id", "timestamp",
@@ -1031,6 +1039,14 @@ def main() -> None:
                 table = TOPIC_TABLE_MAP.get(topic)
                 if table is None:
                     continue
+
+                # Verify HMAC for agent-produced messages
+                if table in _AGENT_TABLES:
+                    hdrs = raw_msg.headers() or []
+                    if not message_signer.extract_and_verify(raw_msg.value(), hdrs):
+                        error_count += 1
+                        log.warning("HMAC verification failed topic=%s offset=%s", topic, raw_msg.offset())
+                        continue
 
                 try:
                     payload = _json_loads(raw_msg.value())

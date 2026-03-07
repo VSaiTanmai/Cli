@@ -88,5 +88,14 @@ scrape_configs:
       - targets: ["clif-dashboard:3001"]
         labels:
           service: "dashboard"
+
+  # ── Verifier Agent ─────────────────────────────────────────────────────
+  - job_name: "verifier-agent"
+    static_configs:
+      - targets: ["clif-verifier-agent:8500"]
+        labels:
+          service: "verifier-agent"
+    metrics_path: /stats
+    scrape_interval: 15s
     metrics_path: /api/system
     scrape_interval: 30s

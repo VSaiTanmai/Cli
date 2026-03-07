@@ -77,6 +77,9 @@ class Scorer:
             self._model_mtime = path.stat().st_mtime
             self._use_ml = True
             log.info("CatBoost model loaded from %s", path)
+            # Invalidate cached model hash so it's recomputed on next use
+            import app as _app_mod
+            _app_mod._cached_model_hash = None
         except Exception as exc:  # noqa: BLE001
             log.error("Failed to load CatBoost model: %s", exc)
             self._use_ml = False
