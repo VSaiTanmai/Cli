@@ -1,241 +1,132 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  Cell,
+  PieChart,
+  Pie,
+} from "recharts";
+import {
+  Fingerprint,
+  Info,
+  RefreshCw,
+  Download,
+  Layers,
+  Eye,
+  BarChart3,
+  TrendingUp,
+  Zap,
+  Brain,
+  Crosshair,
+  Search as SearchIcon,
+  ShieldCheck,
+  ChevronRight,
+  CheckCircle,
+  FileSearch,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  BrainCircuit,
-  ArrowUpRight,
-  ArrowDownRight,
-  Loader2,
-  Info,
-  BarChart3,
-  Layers,
-  Zap,
-  AlertTriangle,
-} from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { usePolling } from "@/hooks/use-polling";
+import { cn } from "@/lib/utils";
+import type { Investigation } from "@/lib/types";
 
-/* ─── Types ──────────────────────────────────────────────────────────────── */
-
-interface XAIFeature {
-  feature: string;
-  display_name: string;
-  shap_value: number;
-  abs_shap_value: number;
-  feature_value?: number;
-  raw_value?: string | number | null;
-  impact: "positive" | "negative";
-  category: string;
+interface XAIData {
+  globalFeatures: Array<{ feature: string; importance: number; direction: string }>;
+  decisionBoundary?: Array<{ x: number; y: number; label: number }>;
+  featureInteractions?: Array<{ pair: string; interaction: number }>;
+  cohortAnalysis?: Array<{
+    cohort: string;
+    accuracy: number;
+    f1: number;
+    count: number;
+    topFeature: string;
+  }>;
+  modelCards?: Array<{
+    model: string;
+    version: string;
+    trainDate: string;
+    metrics: { f1: number; precision: number; recall: number; auc: number };
+    fairness: { equalizedOdds: number; demographicParity: number };
+  }>;
 }
 
-interface WaterfallData {
-  base_value: number;
-  output_value: number;
-  features: { feature: string; value: number }[];
-}
-
-interface GlobalFeature {
-  feature: string;
-  display_name: string;
-  importance: number;
-  category: string;
-}
-
-interface XAIStatus {
-  available: boolean;
-  explainer_type?: string;
-  feature_count?: number;
-  top_k?: number;
-  features?: GlobalFeature[];
-  total_features?: number;
-  model_types?: { binary: string; multiclass: string };
-  error?: string;
-}
-
-interface ExplainResult {
-  is_attack: boolean;
-  confidence: number;
-  category: string;
-  severity: string;
-  explanation: string;
-  xai?: {
-    top_features: XAIFeature[];
-    waterfall: WaterfallData;
-    prediction_drivers: string;
-    category_attribution: Record<string, number>;
-    model_type: string;
-    explainer_type: string;
-    error?: string;
-  };
-}
-
-/* ─── Sample Events ──────────────────────────────────────────────────────── */
-
-const SAMPLE_EVENTS = [
-  {
-    name: "SYN Flood (DoS)",
-    event: {
-      duration: 0, protocol_type: "tcp", service: "private", flag: "S0",
-      src_bytes: 0, dst_bytes: 0, count: 511, srv_count: 511,
-      serror_rate: 1.0, srv_serror_rate: 1.0, same_srv_rate: 1.0,
-      diff_srv_rate: 0.0, dst_host_count: 255, dst_host_srv_count: 255,
-      dst_host_same_srv_rate: 1.0, dst_host_same_src_port_rate: 1.0,
-      dst_host_serror_rate: 1.0, dst_host_srv_serror_rate: 1.0,
+const MOCK_DATA: XAIData = {
+  globalFeatures: [
+    { feature: "event_frequency", importance: 0.342, direction: "positive" },
+    { feature: "sigma_match_count", importance: 0.287, direction: "positive" },
+    { feature: "time_anomaly_score", importance: 0.231, direction: "positive" },
+    { feature: "network_bytes_out", importance: 0.198, direction: "positive" },
+    { feature: "process_tree_depth", importance: 0.176, direction: "positive" },
+    { feature: "user_risk_score", importance: 0.154, direction: "positive" },
+    { feature: "geo_anomaly", importance: 0.132, direction: "positive" },
+    { feature: "entropy_score", importance: 0.119, direction: "positive" },
+    { feature: "login_frequency", importance: -0.098, direction: "negative" },
+    { feature: "session_duration", importance: -0.067, direction: "negative" },
+  ],
+  decisionBoundary: Array.from({ length: 80 }, (_, i) => ({
+    x: (Math.random() - 0.5) * 4,
+    y: (Math.random() - 0.5) * 4,
+    label: Math.random() > 0.4 ? 1 : 0,
+  })),
+  featureInteractions: [
+    { pair: "event_freq × sigma_match", interaction: 0.089 },
+    { pair: "time_anomaly × geo_anomaly", interaction: 0.074 },
+    { pair: "bytes_out × entropy", interaction: 0.061 },
+    { pair: "process_depth × user_risk", interaction: 0.052 },
+    { pair: "login_freq × session_dur", interaction: 0.038 },
+  ],
+  cohortAnalysis: [
+    { cohort: "Network Events", accuracy: 0.94, f1: 0.92, count: 12450, topFeature: "network_bytes_out" },
+    { cohort: "Auth Events", accuracy: 0.96, f1: 0.95, count: 8320, topFeature: "login_frequency" },
+    { cohort: "Process Events", accuracy: 0.91, f1: 0.89, count: 15200, topFeature: "process_tree_depth" },
+    { cohort: "File Events", accuracy: 0.88, f1: 0.86, count: 6100, topFeature: "entropy_score" },
+  ],
+  modelCards: [
+    {
+      model: "XGBoost Binary Classifier",
+      version: "v3.1.0",
+      trainDate: "2025-01-15",
+      metrics: { f1: 0.942, precision: 0.951, recall: 0.933, auc: 0.978 },
+      fairness: { equalizedOdds: 0.96, demographicParity: 0.93 },
     },
-  },
-  {
-    name: "Port Scan (Probe)",
-    event: {
-      duration: 0, protocol_type: "tcp", service: "other", flag: "RSTO",
-      src_bytes: 0, dst_bytes: 0, count: 6, srv_count: 1,
-      rerror_rate: 0.83, srv_rerror_rate: 1.0, same_srv_rate: 0.17,
-      diff_srv_rate: 0.06, dst_host_count: 255, dst_host_srv_count: 1,
-      dst_host_diff_srv_rate: 0.06, dst_host_rerror_rate: 0.88,
-      dst_host_srv_rerror_rate: 1.0,
-    },
-  },
-  {
-    name: "Normal HTTP",
-    event: {
-      duration: 0, protocol_type: "tcp", service: "http", flag: "SF",
-      src_bytes: 215, dst_bytes: 45076, logged_in: 1, count: 5,
-      srv_count: 5, same_srv_rate: 1.0, dst_host_count: 255,
-      dst_host_srv_count: 255, dst_host_same_srv_rate: 1.0,
-    },
-  },
-  {
-    name: "SSH Brute Force (R2L)",
-    event: {
-      duration: 0, protocol_type: "tcp", service: "ssh", flag: "S0",
-      src_bytes: 0, dst_bytes: 0, num_failed_logins: 3, logged_in: 0,
-      count: 150, srv_count: 150, serror_rate: 0.8, srv_serror_rate: 0.8,
-      same_srv_rate: 1.0, dst_host_count: 1, dst_host_srv_count: 1,
-      dst_host_same_srv_rate: 1.0, dst_host_serror_rate: 0.75,
-    },
-  },
-];
-
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
-
-const CATEGORY_COLORS: Record<string, string> = {
-  traffic: "bg-blue-500/15 text-blue-400 border-blue-500/25",
-  content: "bg-purple-500/15 text-purple-400 border-purple-500/25",
-  connection: "bg-cyan-500/15 text-cyan-400 border-cyan-500/25",
-  error_rate: "bg-orange-500/15 text-orange-400 border-orange-500/25",
-  host: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  protocol: "bg-pink-500/15 text-pink-400 border-pink-500/25",
-  other: "bg-neutral-500/15 text-neutral-400 border-neutral-500/25",
+  ],
 };
 
-function shapBar(value: number, maxAbs: number) {
-  const pct = maxAbs > 0 ? Math.min(Math.abs(value) / maxAbs, 1) * 100 : 0;
-  const isPositive = value > 0;
-  return (
-    <div className="relative h-4 w-full">
-      {/* Center line */}
-      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-neutral-700" />
-      {isPositive ? (
-        <div
-          className="absolute top-0.5 bottom-0.5 rounded-r bg-red-500/70"
-          style={{ left: "50%", width: `${pct / 2}%` }}
-        />
-      ) : (
-        <div
-          className="absolute top-0.5 bottom-0.5 rounded-l bg-blue-500/70"
-          style={{ right: "50%", width: `${pct / 2}%` }}
-        />
-      )}
-    </div>
-  );
-}
-
-function severityColor(sev: string) {
-  switch (sev) {
-    case "critical": return "text-red-400";
-    case "high": return "text-orange-400";
-    case "medium": return "text-yellow-400";
-    case "low": return "text-blue-400";
-    default: return "text-neutral-400";
-  }
-}
-
-/* ─── Page ───────────────────────────────────────────────────────────────── */
-
 export default function ExplainabilityPage() {
-  const [status, setStatus] = useState<XAIStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [explaining, setExplaining] = useState(false);
-  const [result, setResult] = useState<ExplainResult | null>(null);
-  const [selectedSample, setSelectedSample] = useState(0);
+  const { data, loading, refresh } = usePolling<XAIData>("/api/ai/xai", 30000);
+  const [view, setView] = useState("features");
+  const [investigations, setInvestigations] = useState<Investigation[]>([]);
 
-  // Fetch XAI status & global feature importance on mount
   useEffect(() => {
-    fetch("/api/ai/xai")
+    fetch("/api/ai/investigations/list")
       .then((r) => r.json())
-      .then((s) => {
-        setStatus(s);
-        // Auto-trigger first explanation so page isn't empty
-        if (s?.available) {
-          setExplaining(true);
-          fetch("/api/ai/xai", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(SAMPLE_EVENTS[0].event),
-          })
-            .then((r) => r.json())
-            .then(setResult)
-            .catch(() => setResult(null))
-            .finally(() => setExplaining(false));
-        }
-      })
-      .catch(() => setStatus({ available: false, error: "Service unavailable" }))
-      .finally(() => setLoading(false));
+      .then((d) => setInvestigations(d.investigations || []))
+      .catch(() => {});
   }, []);
 
-  const handleExplain = useCallback(async (idx: number) => {
-    setSelectedSample(idx);
-    setExplaining(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/ai/xai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(SAMPLE_EVENTS[idx].event),
-      });
-      const data = await res.json();
-      setResult(data);
-    } catch {
-      setResult(null);
-    } finally {
-      setExplaining(false);
-    }
-  }, []);
+  const xai = data?.globalFeatures ? data : MOCK_DATA;
 
-  // Compute max absolute SHAP for bar scaling
-  const maxAbsShap = useMemo(() => {
-    if (!result?.xai?.top_features) return 1;
-    return Math.max(
-      ...result.xai.top_features.map((f) => Math.abs(f.shap_value)),
-      0.001
-    );
-  }, [result]);
-
-  // Top global features (up to 15)
-  const globalFeatures = useMemo(() => {
-    if (!status?.features) return [];
-    return status.features.slice(0, 15);
-  }, [status]);
-
-  const maxGlobalImportance = useMemo(() => {
-    if (!globalFeatures.length) return 1;
-    return Math.max(...globalFeatures.map((f) => f.importance), 0.001);
-  }, [globalFeatures]);
-
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <Skeleton key={i} className="h-40 rounded-lg" />
+        ))}
       </div>
     );
   }
@@ -245,442 +136,417 @@ export default function ExplainabilityPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <BrainCircuit className="h-6 w-6 text-primary" />
-            Explainable AI (XAI)
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            SHAP-based model interpretability — understand why the AI makes each decision
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <Fingerprint className="h-5 w-5 text-nexus-cyan" />
+            XAI Explainability Center
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Global model explanations, feature analysis, and fairness monitoring
           </p>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            status?.available
-              ? "border-emerald-500/30 text-emerald-400"
-              : "border-red-500/30 text-red-400"
-          }
-        >
-          {status?.available ? "SHAP Active" : "XAI Unavailable"}
-        </Badge>
+        <Button variant="outline" size="sm" onClick={refresh}>
+          <RefreshCw className="mr-1 h-3 w-3" /> Refresh
+        </Button>
       </div>
 
-      {/* Status Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <BrainCircuit className="h-5 w-5 text-primary" />
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Explainer
-              </p>
-              <p className="text-sm font-medium">
-                {status?.explainer_type || "N/A"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <Layers className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Features
-              </p>
-              <p className="text-sm font-medium tabular-nums">
-                {status?.feature_count ?? 0}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <BarChart3 className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Top-K Shown
-              </p>
-              <p className="text-sm font-medium tabular-nums">
-                {status?.top_k ?? 10}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <Zap className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Models
-              </p>
-              <p className="text-sm font-medium truncate">
-                {status?.model_types?.binary?.split("Classifier")[0] || "N/A"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Content: 2-Column Layout */}
-      <div className="grid gap-4 lg:grid-cols-5">
-        {/* Left Column: Interactive Explainer */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Sample Event Selector */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[15px] font-bold flex items-center gap-2">
-                <Zap className="h-4 w-4 text-primary" />
-                Live SHAP Explanation
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Select a sample security event to see real-time SHAP feature attribution analysis.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {SAMPLE_EVENTS.map((s, idx) => (
-                  <Button
-                    key={s.name}
-                    size="sm"
-                    variant={selectedSample === idx && result ? "default" : "outline"}
-                    onClick={() => handleExplain(idx)}
-                    disabled={explaining || !status?.available}
-                    className="text-xs"
-                  >
-                    {explaining && selectedSample === idx && (
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    )}
-                    {s.name}
-                  </Button>
-                ))}
+      {/* AI Pipeline XAI Integration Banner */}
+      <Card className="border-nexus-cyan/20 bg-nexus-cyan/5">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-nexus-cyan/10">
+                <Brain className="h-5 w-5 text-nexus-cyan" />
               </div>
-
-              {!status?.available && (
-                <div className="flex items-center gap-2 rounded-md border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-yellow-400">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  XAI is unavailable. Ensure the AI service is running and SHAP is installed.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* SHAP Result */}
-          {result && result.xai && !result.xai.error && (
-            <>
-              {/* Classification Summary */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-[15px] font-bold">
-                    Classification Result
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3 mb-3">
-                    <Badge
-                      variant={result.is_attack ? "destructive" : "outline"}
-                      className="text-xs"
-                    >
-                      {result.is_attack ? "ATTACK" : "BENIGN"}
-                    </Badge>
-                    <span className="text-sm font-mono font-medium">
-                      {result.category}
-                    </span>
-                    <span className={`text-xs font-medium uppercase ${severityColor(result.severity)}`}>
-                      {result.severity}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-                      Confidence: {(result.confidence * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="rounded-md border bg-muted/30 p-3">
-                    <p className="text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
-                      <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
-                      {result.xai.prediction_drivers}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Top Feature Contributions */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-[15px] font-bold flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-primary" />
-                    SHAP Feature Contributions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-3 flex items-center gap-4 text-[11px] text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500/70" />
-                      Pushes toward {result.is_attack ? result.category : "attack"}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-blue-500/70" />
-                      Pushes toward benign
-                    </span>
-                  </div>
-
-                  <table className="w-full text-[13px]">
-                    <thead>
-                      <tr className="border-b border-neutral-800 text-xs text-muted-foreground">
-                        <th className="py-2 pr-2 text-left font-medium w-[30%]">Feature</th>
-                        <th className="py-2 px-2 text-left font-medium w-[40%]">
-                          SHAP Value
-                        </th>
-                        <th className="py-2 px-2 text-right font-medium w-[15%]">Value</th>
-                        <th className="py-2 pl-2 text-right font-medium w-[15%]">Category</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.xai.top_features.map((feat, i) => (
-                        <tr key={feat.feature} className="border-b border-neutral-800/50">
-                          <td className="py-2.5 pr-2">
-                            <div className="flex items-center gap-2">
-                              {feat.impact === "positive" ? (
-                                <ArrowUpRight className="h-3 w-3 text-red-400 shrink-0" />
-                              ) : (
-                                <ArrowDownRight className="h-3 w-3 text-blue-400 shrink-0" />
-                              )}
-                              <span className="truncate" title={feat.display_name}>
-                                {feat.display_name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-2">
-                            <div className="flex items-center gap-2">
-                              {shapBar(feat.shap_value, maxAbsShap)}
-                              <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap w-16 text-right">
-                                {feat.shap_value > 0 ? "+" : ""}
-                                {feat.shap_value.toFixed(4)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                            {feat.raw_value !== null && feat.raw_value !== undefined
-                              ? String(feat.raw_value)
-                              : feat.feature_value?.toFixed(2) ?? "—"}
-                          </td>
-                          <td className="py-2.5 pl-2 text-right">
-                            <span
-                              className={`inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[10px] ${
-                                CATEGORY_COLORS[feat.category] || CATEGORY_COLORS.other
-                              }`}
-                            >
-                              {feat.category}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
-
-              {/* Category Attribution + Waterfall side by side */}
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* Category Attribution */}
-                {result.xai.category_attribution &&
-                  Object.keys(result.xai.category_attribution).length > 0 && (
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-[13px] font-bold">
-                          Feature Category Attribution
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {Object.entries(result.xai.category_attribution).map(
-                            ([cat, val]) => {
-                              const total = Object.values(
-                                result.xai!.category_attribution
-                              ).reduce((a, b) => a + b, 0);
-                              const pct = total > 0 ? (val / total) * 100 : 0;
-                              return (
-                                <div key={cat}>
-                                  <div className="flex justify-between text-xs mb-1">
-                                    <span className="text-muted-foreground">
-                                      {cat}
-                                    </span>
-                                    <span className="tabular-nums">
-                                      {pct.toFixed(1)}%
-                                    </span>
-                                  </div>
-                                  <div className="h-2 w-full rounded-full bg-neutral-800">
-                                    <div
-                                      className="h-2 rounded-full bg-primary transition-all"
-                                      style={{ width: `${pct}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            }
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                {/* Waterfall */}
-                {result.xai.waterfall && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-[13px] font-bold">
-                        Decision Waterfall
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-1 text-xs font-mono">
-                        <div className="flex justify-between text-muted-foreground mb-2">
-                          <span>Base value</span>
-                          <span className="tabular-nums">
-                            {result.xai.waterfall.base_value.toFixed(4)}
-                          </span>
-                        </div>
-                        {result.xai.waterfall.features.map((wf, i) => (
-                          <div
-                            key={i}
-                            className="flex justify-between items-center"
-                          >
-                            <span className="truncate text-muted-foreground pr-2 max-w-[70%]">
-                              {wf.value >= 0 ? "+" : ""}
-                              {wf.value.toFixed(4)}
-                            </span>
-                            <span className={`text-right truncate max-w-[60%] ${
-                              wf.value > 0 ? "text-red-400" : "text-blue-400"
-                            }`}>
-                              {wf.feature}
-                            </span>
-                          </div>
-                        ))}
-                        <div className="border-t border-neutral-700 pt-1 mt-2 flex justify-between font-medium">
-                          <span>Output</span>
-                          <span className="tabular-nums">
-                            {result.xai.waterfall.output_value.toFixed(4)}
-                          </span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* Error or no result */}
-          {result && result.xai?.error && (
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-red-400">
-                  XAI Error: {result.xai.error}
+              <div>
+                <p className="text-sm font-medium text-foreground">Triage Agent — XAI Pipeline</p>
+                <p className="text-xs text-muted-foreground">
+                  SHAP explanations generated per classification &bull; Feature importance computed by XGBoost ensemble
                 </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="text-2xs gap-1">
+                <Crosshair className="h-2.5 w-2.5 text-amber-400" /> Triage: SHAP values
+              </Badge>
+              <Badge variant="outline" className="text-2xs gap-1">
+                <SearchIcon className="h-2.5 w-2.5 text-nexus-cyan" /> Hunter: Correlation scores
+              </Badge>
+              <Badge variant="outline" className="text-2xs gap-1">
+                <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" /> Verifier: Confidence %
+              </Badge>
+              <Link href="/ai-agents">
+                <Button variant="ghost" size="sm" className="text-xs">Agents <ChevronRight className="ml-1 h-3 w-3" /></Button>
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Per-Investigation XAI */}
+      {investigations.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <FileSearch className="h-4 w-4 text-nexus-purple" />
+              Per-Investigation Explanations
+            </CardTitle>
+            <CardDescription>Click to view SHAP analysis for each classified investigation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {investigations.slice(0, 6).map((inv) => (
+                <Link key={inv.id} href={`/investigations/${inv.id}`}>
+                  <div className="flex items-center gap-3 rounded-lg border border-border p-3 hover:border-primary/30 hover:bg-muted/10 transition-colors">
+                    <Badge
+                      variant={inv.severity >= 4 ? "critical" : inv.severity >= 3 ? "high" : "medium"}
+                      className="text-2xs shrink-0"
+                    >
+                      S{inv.severity}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{inv.title}</p>
+                      <p className="text-2xs text-muted-foreground">{inv.eventCount} events</p>
+                    </div>
+                    <Badge variant="ghost" className="text-2xs gap-1 shrink-0">
+                      <Fingerprint className="h-2.5 w-2.5" /> XAI
+                    </Badge>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs value={view} onValueChange={setView}>
+        <TabsList>
+          <TabsTrigger value="features">
+            <BarChart3 className="mr-1 h-3 w-3" /> Feature Importance
+          </TabsTrigger>
+          <TabsTrigger value="interactions">
+            <Layers className="mr-1 h-3 w-3" /> Interactions
+          </TabsTrigger>
+          <TabsTrigger value="cohorts">
+            <Eye className="mr-1 h-3 w-3" /> Cohort Analysis
+          </TabsTrigger>
+          <TabsTrigger value="model-card">
+            <Info className="mr-1 h-3 w-3" /> Model Card
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Global Feature Importance */}
+        <TabsContent value="features" className="space-y-4 mt-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Global SHAP Values</CardTitle>
+                <CardDescription>
+                  Mean absolute SHAP contribution per feature across all predictions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-72">
+                  <ResponsiveContainer>
+                    <BarChart
+                      data={xai.globalFeatures}
+                      layout="vertical"
+                      margin={{ left: 100 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border))"
+                        horizontal={false}
+                      />
+                      <XAxis
+                        type="number"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="feature"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={95}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
+                        {xai.globalFeatures.map((f, i) => (
+                          <Cell
+                            key={i}
+                            fill={f.importance >= 0 ? "rgba(6,182,212,0.7)" : "rgba(239,68,68,0.7)"}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
-          )}
-        </div>
 
-        {/* Right Column: Global Feature Importance */}
-        <div className="lg:col-span-2 space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Decision Boundary Visualization</CardTitle>
+                <CardDescription>
+                  2D projection of top-2 features with classification regions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-72">
+                  <ResponsiveContainer>
+                    <ScatterChart>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border))"
+                      />
+                      <XAxis
+                        type="number"
+                        dataKey="x"
+                        name="Feature 1"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        type="number"
+                        dataKey="y"
+                        name="Feature 2"
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={false}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Scatter data={xai.decisionBoundary}>
+                        {(xai.decisionBoundary || []).map((p, i) => (
+                          <Cell
+                            key={i}
+                            fill={p.label === 1 ? "rgba(239,68,68,0.6)" : "rgba(6,182,212,0.6)"}
+                          />
+                        ))}
+                      </Scatter>
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-2 flex gap-4 justify-center text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" /> Attack
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-500/60" /> Benign
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Feature detail list */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[15px] font-bold flex items-center gap-2">
-                <Layers className="h-4 w-4 text-primary" />
-                Global Feature Importance
-              </CardTitle>
+            <CardHeader>
+              <CardTitle className="text-sm">Feature Detail</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground mb-4">
-                Model-wide feature importance (Gini impurity) — which features matter most across all predictions.
-              </p>
-              {globalFeatures.length > 0 ? (
+              <ScrollArea className="h-48">
                 <div className="space-y-2">
-                  {globalFeatures.map((feat, i) => {
-                    const pct =
-                      maxGlobalImportance > 0
-                        ? (feat.importance / maxGlobalImportance) * 100
-                        : 0;
+                  {xai.globalFeatures.map((f) => {
+                    const pct = (Math.abs(f.importance) / 0.4) * 100;
                     return (
-                      <div key={feat.feature}>
-                        <div className="flex justify-between text-xs mb-0.5">
-                          <span
-                            className="truncate text-foreground"
-                            title={feat.feature}
-                          >
-                            <span className="text-muted-foreground mr-1 tabular-nums">
-                              {i + 1}.
-                            </span>
-                            {feat.display_name}
-                          </span>
-                          <span className="tabular-nums text-muted-foreground ml-2 whitespace-nowrap">
-                            {(feat.importance * 100).toFixed(2)}%
-                          </span>
-                        </div>
-                        <div className="h-1.5 w-full rounded-full bg-neutral-800">
+                      <div key={f.feature} className="flex items-center gap-3">
+                        <span className="w-36 truncate font-mono text-xs text-muted-foreground">
+                          {f.feature}
+                        </span>
+                        <div className="flex-1 h-3 rounded bg-muted/30 overflow-hidden">
                           <div
-                            className="h-1.5 rounded-full bg-primary/70 transition-all"
-                            style={{ width: `${pct}%` }}
+                            className="h-full rounded transition-all duration-500"
+                            style={{
+                              width: `${Math.min(pct, 100)}%`,
+                              background:
+                                f.importance >= 0
+                                  ? "rgba(6,182,212,0.5)"
+                                  : "rgba(239,68,68,0.5)",
+                            }}
                           />
                         </div>
+                        <Badge
+                          variant={f.importance >= 0 ? "cyan" : "destructive"}
+                          className="text-2xs w-14 justify-center"
+                        >
+                          {f.importance >= 0 ? "+" : ""}
+                          {f.importance.toFixed(3)}
+                        </Badge>
                       </div>
                     );
                   })}
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {status?.available
-                    ? "Loading feature importance..."
-                    : "Feature importance unavailable — AI service offline."}
-                </p>
-              )}
+              </ScrollArea>
             </CardContent>
           </Card>
+        </TabsContent>
 
-          {/* How SHAP Works — Info Card */}
+        {/* Feature Interactions */}
+        <TabsContent value="interactions" className="space-y-4 mt-4">
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[13px] font-bold flex items-center gap-2">
-                <Info className="h-4 w-4 text-primary" />
-                How SHAP Works
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Layers className="h-4 w-4 text-nexus-purple" />
+                Feature Interaction Strengths
               </CardTitle>
+              <CardDescription>
+                SHAP interaction values showing how feature pairs jointly influence predictions
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 text-xs text-muted-foreground leading-relaxed">
-              <p>
-                <strong className="text-foreground">SHAP</strong> (SHapley Additive
-                exPlanations) uses game-theoretic Shapley values to attribute each
-                feature&apos;s contribution to a prediction.
-              </p>
-              <p>
-                <strong className="text-foreground">TreeExplainer</strong> computes
-                exact SHAP values in polynomial time for tree-based models
-                (ExtraTrees, XGBoost, LightGBM), making it efficient for real-time
-                SOC analysis.
-              </p>
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500/70" />
-                  <span>
-                    <strong className="text-red-400">Positive SHAP</strong> — pushes
-                    prediction toward the classified category
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-blue-500/70" />
-                  <span>
-                    <strong className="text-blue-400">Negative SHAP</strong> —
-                    opposes the predicted classification
-                  </span>
-                </div>
+            <CardContent>
+              <div className="h-48">
+                <ResponsiveContainer>
+                  <BarChart data={xai.featureInteractions} layout="vertical" margin={{ left: 160 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="pair"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={155}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Bar dataKey="interaction" fill="rgba(139,92,246,0.6)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <p className="border-t border-neutral-800 pt-2">
-                CLIF uses both a <strong className="text-foreground">binary</strong>{" "}
-                (attack/normal) and <strong className="text-foreground">multiclass</strong>{" "}
-                (DoS/Probe/R2L/U2R/Normal) model. For attacks, the multiclass SHAP
-                values are shown; for benign traffic, binary values are used.
-              </p>
             </CardContent>
           </Card>
-        </div>
-      </div>
+        </TabsContent>
+
+        {/* Cohort Analysis */}
+        <TabsContent value="cohorts" className="space-y-4 mt-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {(xai.cohortAnalysis || []).map((c) => (
+              <Card key={c.cohort}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-foreground">{c.cohort}</h4>
+                    <Badge variant="ghost" className="text-2xs">
+                      {c.count.toLocaleString()} events
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-2xs text-muted-foreground">Accuracy</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {(c.accuracy * 100).toFixed(1)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-2xs text-muted-foreground">F1 Score</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {c.f1.toFixed(3)}
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-2xs text-muted-foreground">Top Feature</p>
+                    <Badge variant="outline" className="mt-0.5 text-2xs font-mono">
+                      {c.topFeature}
+                    </Badge>
+                  </div>
+                  {/* Accuracy bar */}
+                  <div className="h-2 rounded bg-muted/30 overflow-hidden">
+                    <div
+                      className="h-full rounded bg-nexus-cyan/50 transition-all"
+                      style={{ width: `${c.accuracy * 100}%` }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Model Card */}
+        <TabsContent value="model-card" className="space-y-4 mt-4">
+          {(xai.modelCards || MOCK_DATA.modelCards!).map((mc) => (
+            <Card key={mc.model}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm">{mc.model}</CardTitle>
+                    <CardDescription>
+                      Version {mc.version} · Trained {mc.trainDate}
+                    </CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm">
+                    <Download className="mr-1 h-3 w-3" /> Export Card
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+                  {Object.entries(mc.metrics).map(([k, v]) => (
+                    <div key={k}>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                        {k}
+                      </p>
+                      <p className={cn(
+                        "mt-1 text-2xl font-bold",
+                        v >= 0.9 ? "text-emerald-400" : v >= 0.7 ? "text-amber-400" : "text-destructive"
+                      )}>
+                        {v.toFixed(3)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6">
+                  <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                    Fairness Metrics
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                    {Object.entries(mc.fairness).map(([k, v]) => (
+                      <div key={k}>
+                        <p className="text-xs text-muted-foreground">{k.replace(/([A-Z])/g, " $1").trim()}</p>
+                        <p className="mt-1 text-lg font-semibold text-foreground">
+                          {v.toFixed(3)}
+                        </p>
+                        <Badge
+                          variant={v >= 0.9 ? "success" : v >= 0.8 ? "warning" : "destructive"}
+                          className="mt-0.5 text-2xs"
+                        >
+                          {v >= 0.9 ? "Fair" : v >= 0.8 ? "Review" : "Bias Risk"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

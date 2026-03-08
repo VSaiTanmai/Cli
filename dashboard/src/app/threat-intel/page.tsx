@@ -1,387 +1,428 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import {
+  Globe,
+  Shield,
+  AlertTriangle,
+  Search,
+  RefreshCw,
+  ExternalLink,
+  Hash,
+  Server,
+  Mail,
+  FileText,
+  Target,
+  Clock,
+  Filter,
+  ChevronDown,
+  ChevronRight,
+  Brain,
+  Crosshair,
+  Search as SearchIcon,
+  ShieldCheck,
+  Zap,
+  CheckCircle,
+  Link2,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatNumber, timeAgo } from "@/lib/utils";
-import { cn } from "@/lib/utils";
-import {
-  Radar,
-  Search,
-  Globe,
-  Hash,
-  Link2,
-  Server,
-  Shield,
-  AlertTriangle,
-  Tag,
-  Activity,
-  Download,
-  Zap,
-
-  RefreshCw,
-  CheckCircle2,
-  Clock,
-
-} from "lucide-react";
-import threatIntelData from "@/lib/mock/threat-intel.json";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { usePolling } from "@/hooks/use-polling";
+import { formatNumber, timeAgo, cn } from "@/lib/utils";
 import type { IOC, ThreatPattern } from "@/lib/types";
-import { toast } from "sonner";
+import type { Investigation } from "@/lib/types";
 
-const iocs = threatIntelData.iocs as IOC[];
-const threatPatterns = threatIntelData.threatPatterns as ThreatPattern[];
-
-/* ─── Constants ─── */
-const IOC_TYPE_ICONS: Record<string, React.ElementType> = {
-  IPv4: Server,
-  Domain: Globe,
-  SHA256: Hash,
-  URL: Link2,
-};
-
-const CONFIDENCE_COLORS: Record<string, string> = {
-  high: "text-emerald-600",
-  medium: "text-amber-600",
-  low: "text-red-600",
-};
-
-function getConfidenceLevel(score: number): string {
-  if (score >= 80) return "high";
-  if (score >= 50) return "medium";
-  return "low";
+interface ThreatIntelResponse {
+  iocs: IOC[];
+  patterns: ThreatPattern[];
+  stats?: {
+    totalIOCs: number;
+    activeThreats: number;
+    mitreTechniques: number;
+    lastUpdated: string;
+  };
 }
 
-const SEVERITY_VARIANT: Record<number, "critical" | "high" | "medium" | "low" | "info"> = {
-  4: "critical",
-  3: "high",
-  2: "medium",
-  1: "low",
-  0: "info",
+const IOC_ICONS: Record<string, typeof Globe> = {
+  ip: Server,
+  domain: Globe,
+  url: ExternalLink,
+  hash: Hash,
+  email: Mail,
+  file: FileText,
 };
 
-/* ─── Feed Sources (mock) ─── */
-const FEED_SOURCES = [
-  { name: "AlienVault OTX", iocs: "45.2K", limit: "840/1000", updated: "2 min ago", status: "ok" as const },
-  { name: "MISP Community", iocs: "23.1K", limit: "Unlimited", updated: "5 min ago", status: "ok" as const },
-  { name: "Abuse.ch", iocs: "12.4K", limit: "Unlimited", updated: "3 min ago", status: "ok" as const },
-  { name: "VirusTotal", iocs: "89.3K", limit: "4/4 (Quota)", updated: "15 min ago", status: "delayed" as const },
-];
-
-
-
-/* ══════════════════════════════════════════════════════════════
-   Threat Intelligence Page
-   ══════════════════════════════════════════════════════════════ */
 export default function ThreatIntelPage() {
+  const { data, loading, refresh } = usePolling<ThreatIntelResponse>(
+    "/api/threat-intel",
+    30000
+  );
+  const [tab, setTab] = useState("iocs");
   const [filter, setFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("All");
-  const [liveMitre, setLiveMitre] = useState<Array<{ technique: string; tactic: string; count: number; maxSeverity: number }>>([]);
-  const [liveIOCs, setLiveIOCs] = useState<Array<{ value: string; type: string; hits: number; maxSeverity: number }>>([]);
-  const abortRef = useRef<AbortController | null>(null);
+  const [expandedPattern, setExpandedPattern] = useState<string | null>(null);
+  const [investigations, setInvestigations] = useState<Investigation[]>([]);
 
   useEffect(() => {
-    async function fetchLive() {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      try {
-        const res = await fetch("/api/threat-intel", { cache: "no-store", signal: controller.signal });
-        if (!res.ok) return;
-        const json = await res.json();
-        setLiveMitre(json.mitreStats ?? []);
-        setLiveIOCs(json.topIOCs ?? []);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-      }
-    }
-    fetchLive();
-    const t = setInterval(fetchLive, 30_000);
-    return () => { clearInterval(t); abortRef.current?.abort(); };
+    fetch("/api/ai/investigations/list")
+      .then((r) => r.json())
+      .then((d) => setInvestigations(d.investigations || []))
+      .catch(() => {});
   }, []);
 
-  const filteredIocs = useMemo(() => iocs.filter((ioc) => {
-    const matchesText = !filter || ioc.value.toLowerCase().includes(filter.toLowerCase()) || ioc.tags.some((t) => t.toLowerCase().includes(filter.toLowerCase()));
-    const matchesType = typeFilter === "All" || ioc.type === typeFilter;
-    return matchesText && matchesType;
-  }), [filter, typeFilter]);
+  if (loading && !data) {
+    return (
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <Skeleton key={i} className="h-32 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
 
-  const totalIOCs = iocs.length + liveIOCs.length;
+  const iocs = data?.iocs || [];
+  const patterns = data?.patterns || [];
+  const stats = data?.stats;
+
+  const filteredIOCs = iocs.filter(
+    (ioc) =>
+      ioc.value.toLowerCase().includes(filter.toLowerCase()) ||
+      ioc.type.toLowerCase().includes(filter.toLowerCase()) ||
+      ioc.source?.toLowerCase().includes(filter.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[26px] font-bold tracking-tight text-foreground">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <Globe className="h-5 w-5 text-nexus-purple" />
             Threat Intelligence
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-neutral-400">
-            Global threat landscape, IOC management, and adversary tracking.
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            IOC management, threat patterns, and MITRE ATT&CK mapping
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            className="gap-1.5 text-sm"
-            onClick={() => toast.info("Export Report", { description: "Generating threat intelligence report…" })}
-          >
-            <Download className="h-4 w-4" /> Export Report
-          </Button>
-          <Button
-            className="gap-1.5 text-sm bg-red-600 hover:bg-red-700 text-white"
-            onClick={() => toast.success("Active Defense Mode enabled", { description: "Automated blocking of known IoCs on perimeter devices." })}
-          >
-            <Shield className="h-4 w-4" /> ACTIVE DEFENSE MODE
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={refresh}>
+          <RefreshCw className="mr-1 h-3 w-3" /> Refresh
+        </Button>
       </div>
 
-      {/* ── Feed Health + Feed Sources Row ── */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-5">
-        {/* Feed Health Card */}
-        <Card className="shadow-sm border-gray-200/80 dark:border-neutral-700/80 overflow-hidden border-l-4 border-l-blue-500">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400">
-              <Activity className="h-4 w-4 text-blue-500" />
-              FEED HEALTH
-            </div>
-            <div className="mt-3">
-              <span className="text-3xl font-bold text-green-600">98.2%</span>
-              <span className="ml-1.5 text-sm text-green-600 font-medium">Uptime</span>
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-neutral-400">Active Feeds</span>
-                <span className="font-semibold text-foreground">{FEED_SOURCES.length}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-neutral-400">Total IOCs</span>
-                <span className="font-semibold text-blue-600">172.4K</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-neutral-400">Last Sync</span>
-                <span className="font-semibold text-foreground">2m ago</span>
-              </div>
-            </div>
-            <Button
-              className="mt-4 w-full gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm"
-              onClick={() => toast.success("Syncing all feeds…")}
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> SYNC ALL
-            </Button>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Card className="stat-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total IOCs</p>
+              <p className="text-xl font-bold text-foreground">
+                {formatNumber(stats.totalIOCs)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="stat-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Active Threats</p>
+              <p className="text-xl font-bold text-destructive">
+                {formatNumber(stats.activeThreats)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="stat-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">MITRE Techniques</p>
+              <p className="text-xl font-bold text-foreground">
+                {formatNumber(stats.mitreTechniques)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="stat-card">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Last Updated</p>
+              <p className="text-sm font-medium text-foreground">
+                {timeAgo(stats.lastUpdated)}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-        {/* Individual Feed Cards */}
-        {FEED_SOURCES.map((feed) => (
-          <Card key={feed.name} className="shadow-sm border-gray-200/80 dark:border-neutral-700/80">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-foreground">{feed.name}</h3>
-                {feed.status === "ok" ? (
-                  <Badge className="bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400 border-0 text-[10px] font-bold">
-                    OK
-                  </Badge>
-                ) : (
-                  <Badge className="bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400 border-0 text-[10px] font-bold">
-                    DELAYED
-                  </Badge>
-                )}
+      {/* AI Enrichment Banner */}
+      <Card className="border-nexus-cyan/20 bg-nexus-cyan/5">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-nexus-cyan/10">
+                <Brain className="h-5 w-5 text-nexus-cyan" />
               </div>
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-neutral-400">IOCs</span>
-                  <span className="font-semibold tabular-nums text-foreground">{feed.iocs}</span>
+              <div>
+                <p className="text-sm font-medium text-foreground">AI-Driven IOC Enrichment</p>
+                <p className="text-xs text-muted-foreground">
+                  Triage Agent checks IOCs against threat feeds &bull; Hunter Agent correlates IOCs across investigations
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <Crosshair className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-xs text-muted-foreground">Triage</span>
+                <CheckCircle className="h-3 w-3 text-emerald-400" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <SearchIcon className="h-3.5 w-3.5 text-nexus-cyan" />
+                <span className="text-xs text-muted-foreground">Hunter</span>
+                <CheckCircle className="h-3 w-3 text-emerald-400" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-xs text-muted-foreground">Verifier</span>
+                <CheckCircle className="h-3 w-3 text-emerald-400" />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Threat Feed Status */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {[
+          { name: "MITRE ATT&CK", status: "active" as const, lastSync: "2m ago", iocs: 156, color: "text-nexus-purple" },
+          { name: "Sigma Rules", status: "active" as const, lastSync: "5m ago", iocs: 89, color: "text-nexus-cyan" },
+          { name: "Custom Threat Feed", status: "active" as const, lastSync: "1m ago", iocs: 42, color: "text-amber-400" },
+        ].map((feed) => (
+          <Card key={feed.name} className="hover:border-primary/20 transition-colors">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className={cn("h-3.5 w-3.5", feed.color)} />
+                  <span className="text-sm font-medium text-foreground">{feed.name}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-neutral-400">Limit</span>
-                  <span className="font-semibold tabular-nums text-foreground">{feed.limit}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-neutral-400">Updated</span>
-                  <span className="font-semibold tabular-nums text-foreground">{feed.updated}</span>
-                </div>
+                <Badge variant="success" className="text-2xs">{feed.status}</Badge>
+              </div>
+              <div className="mt-2 flex items-center gap-3 text-2xs text-muted-foreground">
+                <span>Synced {feed.lastSync}</span>
+                <span>&bull;</span>
+                <span>{feed.iocs} IOCs</span>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* ── Live MITRE ATT&CK Detections ── */}
-      {liveMitre.length > 0 && (
-        <Card className="shadow-sm border-gray-200/80 dark:border-neutral-700/80 overflow-hidden border-l-4 border-l-purple-400">
+      {/* IOC-Investigation Correlation */}
+      {investigations.length > 0 && (
+        <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-[15px] font-bold">
-              <Activity className="h-4 w-4 text-purple-500" />
-              Live MITRE ATT&CK Detections (24h)
-              <Badge variant="outline" className="ml-1 tabular-nums text-[10px]">
-                {liveMitre.reduce((s, m) => s + m.count, 0)} total
-              </Badge>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Link2 className="h-4 w-4 text-nexus-purple" />
+              IOC ↔ Investigation Matches
             </CardTitle>
+            <CardDescription>IOCs that matched across active investigations</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-              {liveMitre.slice(0, 8).map((m) => (
-                <div key={m.technique} className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-neutral-700 px-3 py-2.5 bg-white dark:bg-neutral-800/50">
-                  <div>
-                    <Badge variant={m.maxSeverity >= 3 ? "critical" : m.maxSeverity >= 2 ? "high" : "medium"} className="text-[9px] font-mono">
-                      {m.technique}
-                    </Badge>
-                    <p className="mt-1 text-[10px] text-gray-500 dark:text-neutral-400">{m.tactic}</p>
+            <div className="space-y-2">
+              {investigations.slice(0, 5).map((inv) => (
+                <Link key={inv.id} href={`/investigations/${inv.id}`}>
+                  <div className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-muted/20 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        variant={inv.severity >= 4 ? "critical" : inv.severity >= 3 ? "high" : "medium"}
+                        className="text-2xs"
+                      >
+                        S{inv.severity}
+                      </Badge>
+                      <span className="text-xs font-medium text-foreground">{inv.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-2xs">{inv.eventCount} events</Badge>
+                      {inv.tags?.slice(0, 2).map((t) => (
+                        <Badge key={t} variant="purple" className="text-2xs">{t}</Badge>
+                      ))}
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    </div>
                   </div>
-                  <span className="text-sm font-bold tabular-nums text-foreground">{m.count}</span>
-                </div>
+                </Link>
               ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ── Threat Patterns ── */}
-      <div>
-        <h2 className="mb-3 text-lg font-bold text-foreground flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-amber-500" />
-          Detection Patterns
-        </h2>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-          {threatPatterns.map((pattern) => (
-            <Card key={pattern.name} className="shadow-sm border-gray-200/80 dark:border-neutral-700/80 hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <Badge variant={SEVERITY_VARIANT[pattern.severity] ?? "info"} className="text-[10px]">
-                    {pattern.mitre}
-                  </Badge>
-                  {pattern.matchedEvents > 0 && (
-                    <span className="text-[10px] font-semibold text-amber-600">{pattern.matchedEvents} hits</span>
-                  )}
-                </div>
-                <h3 className="mt-2 text-sm font-semibold text-foreground">{pattern.name}</h3>
-                <p className="mt-1 text-[11px] text-gray-500 dark:text-neutral-400 line-clamp-2">{pattern.description}</p>
-                <div className="mt-3 flex items-center gap-2 text-[10px] text-gray-400">
-                  <Shield className="h-3 w-3" /> {pattern.iocCount} IOCs
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="iocs">
+            <Shield className="mr-1 h-3 w-3" /> IOCs ({iocs.length})
+          </TabsTrigger>
+          <TabsTrigger value="patterns">
+            <Target className="mr-1 h-3 w-3" /> Threat Patterns ({patterns.length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── Live IOC Matches ── */}
-      {liveIOCs.length > 0 && (
-        <Card className="shadow-sm border-gray-200/80 dark:border-neutral-700/80 overflow-hidden border-l-4 border-l-amber-400">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-[15px] font-bold">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Active Threat Indicators (Last 24h)
-              <Badge variant="high" className="ml-1 tabular-nums text-[10px]">{liveIOCs.length} hosts</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 md:grid-cols-3">
-              {liveIOCs.slice(0, 6).map((ioc) => (
-                <div key={ioc.value} className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-neutral-700 px-3 py-2.5 bg-white dark:bg-neutral-800/50">
-                  <div className="flex items-center gap-2">
-                    <Server className="h-3.5 w-3.5 text-gray-400" />
-                    <span className="font-mono text-xs text-foreground">{ioc.value}</span>
-                  </div>
-                  <span className={cn("text-xs font-semibold tabular-nums", ioc.maxSeverity >= 3 ? "text-red-600" : "text-amber-600")}>
-                    {ioc.hits} hits
-                  </span>
-                </div>
-              ))}
+        {/* IOCs Tab */}
+        <TabsContent value="iocs" className="mt-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Search IOCs by value, type, or source..."
+                className="pl-8 h-9 text-sm"
+              />
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── IOC Table ── */}
-      <Card className="shadow-sm border-gray-200/80 dark:border-neutral-700/80">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center justify-between text-[15px] font-bold">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Indicators of Compromise
-              <Badge variant="outline" className="ml-1 tabular-nums">{filteredIocs.length}</Badge>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Filters */}
-          <div className="flex items-center gap-3">
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-              <Input placeholder="Search IOCs…" value={filter} onChange={(e) => setFilter(e.target.value)} className="pl-8 h-8 text-xs" />
-            </div>
-            <div className="flex gap-1">
-              {["All", "IPv4", "Domain", "SHA256", "URL"].map((t) => (
-                <Button key={t} variant={typeFilter === t ? "secondary" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setTypeFilter(t)}>
-                  {t}
-                </Button>
-              ))}
-            </div>
+            <Badge variant="outline" className="text-xs">
+              {filteredIOCs.length} results
+            </Badge>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-neutral-700">
-                  {["Type", "Value", "Source", "Confidence", "MITRE", "Hits", "Tags", "Last Seen"].map((h) => (
-                    <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredIocs.map((ioc, idx) => {
-                  const TypeIcon = IOC_TYPE_ICONS[ioc.type] ?? Globe;
-                  const confLevel = getConfidenceLevel(ioc.confidence);
-                  return (
-                    <tr key={idx} className="border-b border-gray-100 dark:border-neutral-800 transition-colors hover:bg-gray-50/50 dark:hover:bg-neutral-800/50">
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <TypeIcon className="h-3.5 w-3.5 text-gray-400" />
-                          <span className="text-[11px] text-foreground">{ioc.type}</span>
+          <ScrollArea className="h-[500px]">
+            <div className="clif-table">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="pb-2 font-medium">Type</th>
+                    <th className="pb-2 font-medium">Value</th>
+                    <th className="pb-2 font-medium">Confidence</th>
+                    <th className="pb-2 font-medium">Source</th>
+                    <th className="pb-2 font-medium">MITRE</th>
+                    <th className="pb-2 font-medium">Last Seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredIOCs.map((ioc, i) => {
+                    const IconComp = IOC_ICONS[ioc.type] || Shield;
+                    return (
+                      <tr key={i} className="clif-table-row">
+                        <td className="py-2">
+                          <Badge variant="outline" className="text-2xs gap-1">
+                            <IconComp className="h-2.5 w-2.5" />
+                            {ioc.type}
+                          </Badge>
+                        </td>
+                        <td className="py-2 font-mono text-foreground">{ioc.value}</td>
+                        <td className="py-2">
+                          <Badge
+                            variant={
+                              ioc.confidence >= 90
+                                ? "critical"
+                                : ioc.confidence >= 70
+                                  ? "high"
+                                  : ioc.confidence >= 50
+                                    ? "medium"
+                                    : "low"
+                            }
+                            className="text-2xs"
+                          >
+                            {ioc.confidence}%
+                          </Badge>
+                        </td>
+                        <td className="py-2 text-muted-foreground">{ioc.source || "—"}</td>
+                        <td className="py-2">
+                          {ioc.mitre ? (
+                            <Badge variant="purple" className="text-2xs">
+                              {ioc.mitre}
+                            </Badge>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="py-2 text-muted-foreground">
+                          {ioc.lastSeen ? timeAgo(ioc.lastSeen) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {filteredIOCs.length === 0 && (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  {filter ? "No IOCs match your filter" : "No IOCs available"}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Threat Patterns Tab */}
+        <TabsContent value="patterns" className="mt-4 space-y-4">
+          <ScrollArea className="h-[500px]">
+            <div className="space-y-2">
+              {patterns.map((pattern, idx) => {
+                const isExpanded = expandedPattern === pattern.name;
+                return (
+                  <Card
+                    key={idx}
+                    className="hover:border-primary/30 transition-colors"
+                  >
+                    <CardContent className="p-0">
+                      <button
+                        onClick={() =>
+                          setExpandedPattern(isExpanded ? null : pattern.name)
+                        }
+                        className="flex w-full items-start gap-3 p-4 text-left"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-medium text-foreground">
+                              {pattern.name}
+                            </h3>
+                            <Badge
+                              variant={
+                                pattern.severity >= 8
+                                  ? "critical"
+                                  : pattern.severity >= 6
+                                    ? "high"
+                                    : "medium"
+                              }
+                              className="text-2xs"
+                            >
+                              Risk: {pattern.severity}/10
+                            </Badge>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+                            {pattern.description}
+                          </p>
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {pattern.mitre && (
+                              <Badge variant="purple" className="text-2xs">
+                                {pattern.mitre}
+                              </Badge>
+                            )}
+                            <Badge variant="ghost" className="text-2xs">
+                              {pattern.iocCount} IOCs
+                            </Badge>
+                            <Badge variant="ghost" className="text-2xs">
+                              {pattern.matchedEvents} events
+                            </Badge>
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-[11px] text-foreground">
-                        {ioc.value.length > 50 ? `${ioc.value.slice(0, 50)}…` : ioc.value}
-                      </td>
-                      <td className="px-3 py-2.5 text-[11px] text-gray-500 dark:text-neutral-400">{ioc.source}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={cn("text-[11px] font-semibold tabular-nums", CONFIDENCE_COLORS[confLevel])}>
-                          {ioc.confidence}%
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <Badge variant="outline" className="text-[9px] font-mono">{ioc.mitre}</Badge>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={cn("text-[11px] tabular-nums", ioc.matchedEvents > 0 ? "font-semibold text-amber-600" : "text-gray-400")}>
-                          {formatNumber(ioc.matchedEvents)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap gap-1">
-                          {ioc.tags.map((tag) => (
-                            <span key={tag} className="inline-flex items-center rounded-sm bg-gray-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[9px] text-gray-600 dark:text-neutral-400">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-[11px] text-gray-500 dark:text-neutral-400 whitespace-nowrap">
-                        {timeAgo(ioc.lastSeen)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                      </button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {patterns.length === 0 && (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No threat patterns available
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

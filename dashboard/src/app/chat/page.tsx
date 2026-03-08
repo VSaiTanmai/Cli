@@ -1,335 +1,377 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useState, useRef, useEffect, useCallback, FormEvent } from "react";
+import Link from "next/link";
 import {
-  MessageSquare,
   Send,
-  Loader2,
   Bot,
   User,
-  Sparkles,
-  Trash2,
-  AlertTriangle,
-  Shield,
-  BrainCircuit,
-  Search,
+  Loader2,
+  Copy,
   RotateCcw,
+  Trash2,
+  Sparkles,
+  AlertTriangle,
+  Search,
+  Shield,
+  Crosshair,
+  Brain,
+  MessageSquare,
+  Plus,
+  ChevronRight,
+  ShieldCheck,
+  Clock,
 } from "lucide-react";
-import { toast } from "sonner";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
-/* ── Types ── */
-interface Message {
-  role: "user" | "assistant";
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
-  llmUsed?: boolean;
-  note?: string;
+  metadata?: {
+    model?: string;
+    tokensUsed?: number;
+    sources?: string[];
+    confidence?: number;
+  };
 }
 
-/* ── Suggested prompts ── */
-const SUGGESTIONS = [
-  { icon: Shield, label: "How does the investigation pipeline work?", color: "text-blue-600" },
-  { icon: BrainCircuit, label: "Explain SHAP feature attribution", color: "text-purple-600" },
-  { icon: AlertTriangle, label: "What is a SYN flood attack?", color: "text-red-600" },
-  { icon: Search, label: "How to investigate brute force attempts?", color: "text-amber-600" },
+const QUICK_PROMPTS = [
+  { label: "Summarize alerts", icon: AlertTriangle, prompt: "Summarize the current critical and high severity alerts" },
+  { label: "Top threats", icon: Shield, prompt: "What are the top active threats in the last 24 hours?" },
+  { label: "Investigate IOC", icon: Search, prompt: "Investigate this IOC and check for related activity" },
+  { label: "MITRE mapping", icon: Crosshair, prompt: "Map recent attacks to MITRE ATT&CK techniques" },
+  { label: "Pipeline status", icon: Brain, prompt: "What is the current status of the AI pipeline (Triage → Hunter → Verifier)?" },
+  { label: "Evidence integrity", icon: ShieldCheck, prompt: "Check the integrity of recent evidence batches and HMAC chains" },
 ];
 
-/* ── Markdown-lite renderer ── */
-function renderMarkdown(text: string) {
-  // Split into lines, handle bold, bullets, headings
-  const lines = text.split("\n");
-  return lines.map((line, i) => {
-    // Bold
-    let processed = line.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
-    // Inline code
-    processed = processed.replace(/`(.*?)`/g, '<code class="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">$1</code>');
-    // Italic
-    processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-    if (line.startsWith("### ")) {
-      return (
-        <h3 key={i} className="mt-3 mb-1 text-sm font-bold text-foreground" dangerouslySetInnerHTML={{ __html: processed.slice(4) }} />
-      );
-    }
-    if (line.startsWith("## ")) {
-      return (
-        <h2 key={i} className="mt-3 mb-1 text-[15px] font-bold text-foreground" dangerouslySetInnerHTML={{ __html: processed.slice(3) }} />
-      );
-    }
-    if (/^\d+\.\s/.test(line)) {
-      return (
-        <div key={i} className="ml-4 flex gap-2 py-0.5">
-          <span className="shrink-0 text-muted-foreground">{line.match(/^\d+\./)?.[0]}</span>
-          <span dangerouslySetInnerHTML={{ __html: processed.replace(/^\d+\.\s*/, "") }} />
-        </div>
-      );
-    }
-    if (line.startsWith("- ") || line.startsWith("* ")) {
-      return (
-        <div key={i} className="ml-4 flex gap-2 py-0.5">
-          <span className="shrink-0 text-muted-foreground">•</span>
-          <span dangerouslySetInnerHTML={{ __html: processed.slice(2) }} />
-        </div>
-      );
-    }
-    if (line.trim() === "") {
-      return <div key={i} className="h-2" />;
-    }
-    return <p key={i} className="py-0.5" dangerouslySetInnerHTML={{ __html: processed }} />;
-  });
+interface Conversation {
+  id: string;
+  title: string;
+  messageCount: number;
+  lastActivity: Date;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   Chat Page
-   ══════════════════════════════════════════════════════════════ */
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "welcome",
+      role: "system",
+      content:
+        "CLIF AI Assistant initialized. I can help you investigate security events, analyze threats, search the knowledge base, and provide recommendations based on your SOC data.\n\nI have access to your 3-agent AI pipeline (Triage → Hunter → Verifier), ClickHouse event store, and LanceDB vector search.",
+      timestamp: new Date(),
+    },
+  ]);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [conversations, setConversations] = useState<Conversation[]>([
+    { id: "current", title: "Current Session", messageCount: 1, lastActivity: new Date() },
+  ]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto scroll to bottom
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
-
-  // Auto-focus input
-  useEffect(() => {
-    inputRef.current?.focus();
   }, []);
 
-  const sendMessage = useCallback(
-    async (content: string) => {
-      if (!content.trim() || sending) return;
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
-      const userMsg: Message = {
-        role: "user",
-        content: content.trim(),
+  const handleSubmit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: trimmed,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+      });
+
+      if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
+
+      const data = await res.json();
+
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.response || data.message || "I couldn't process that request.",
         timestamp: new Date(),
+        metadata: {
+          model: data.model,
+          tokensUsed: data.tokensUsed,
+          sources: data.sources,
+          confidence: data.confidence,
+        },
       };
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-      setSending(true);
-
-      try {
-        const history = [...messages, userMsg].slice(-10).map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
-        const res = await fetch("/api/ai/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history }),
-        });
-
-        const data = await res.json();
-
-        const assistantMsg: Message = {
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
           role: "assistant",
-          content: data.response ?? data.error ?? "No response received.",
+          content:
+            "I encountered an error processing your request. The AI backend may be unavailable. Please try again.",
           timestamp: new Date(),
-          llmUsed: data.llm_used,
-          note: data.note,
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Unknown error";
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Sorry, I encountered an error: ${msg}. The AI service may be unavailable.`,
-            timestamp: new Date(),
-            llmUsed: false,
-          },
-        ]);
-        toast.error("Chat error", { description: msg });
-      } finally {
-        setSending(false);
-        inputRef.current?.focus();
-      }
-    },
-    [messages, sending],
-  );
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleQuickPrompt = (prompt: string) => {
+    setInput(prompt);
+    setTimeout(() => {
+      const syntheticEvent = { preventDefault: () => {} } as FormEvent;
+      setInput(prompt);
+      handleSubmit(syntheticEvent);
+    }, 50);
+  };
+
+  const handleCopy = (content: string) => {
+    navigator.clipboard.writeText(content);
+  };
+
+  const clearChat = () => {
+    setMessages([
+      {
+        id: "welcome",
+        role: "system",
+        content: "Chat cleared. How can I help you?",
+        timestamp: new Date(),
+      },
+    ]);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(input);
+      handleSubmit();
     }
   };
 
   return (
-    <div className="flex h-[calc(100vh-80px)] flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-4">
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight">CLIF AI Chat</h1>
-          <p className="text-sm text-muted-foreground">
-            Security operations assistant powered by qwen3 via Ollama
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {messages.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => {
-                setMessages([]);
-                toast.info("Chat cleared");
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Clear
+    <div className="flex h-[calc(100vh-52px)]">
+      {/* Sidebar — Conversation History */}
+      {showSidebar && (
+        <div className="w-56 shrink-0 border-r border-border bg-card/50 flex flex-col">
+          <div className="p-3 border-b border-border">
+            <Button variant="outline" size="sm" className="w-full text-xs" onClick={clearChat}>
+              <Plus className="mr-1 h-3 w-3" /> New Chat
             </Button>
-          )}
-          <Badge variant="outline" className="gap-1">
-            <Sparkles className="h-3 w-3" />
-            qwen3-vl:4b
-          </Badge>
+          </div>
+          <ScrollArea className="flex-1 p-2">
+            <div className="space-y-1">
+              {conversations.map((c) => (
+                <button
+                  key={c.id}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/20 transition-colors bg-primary/5"
+                >
+                  <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-foreground truncate flex-1">{c.title}</span>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+          <div className="p-3 border-t border-border space-y-1.5">
+            <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Quick Links</p>
+            <Link href="/ai-agents" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <Brain className="h-3 w-3" /> AI Agents
+            </Link>
+            <Link href="/investigations" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <Shield className="h-3 w-3" /> Investigations
+            </Link>
+            <Link href="/search" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <Search className="h-3 w-3" /> Search
+            </Link>
+          </div>
         </div>
+      )}
+
+      {/* Main Chat Area */}
+      <div className="flex flex-1 flex-col">
+      {/* Quick prompts */}
+      {messages.length <= 1 && (
+        <div className="grid grid-cols-2 gap-2 p-4 md:grid-cols-3">
+          {QUICK_PROMPTS.map((qp) => (
+            <button
+              key={qp.label}
+              onClick={() => handleQuickPrompt(qp.prompt)}
+              className="group flex items-center gap-2 rounded-lg border border-border bg-card p-3 text-left text-sm transition-colors hover:border-primary hover:bg-primary/5"
+            >
+              <qp.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
+              <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
+                {qp.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full" ref={scrollRef}>
+          <div className="mx-auto max-w-3xl space-y-4 p-4">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={cn("flex gap-3", msg.role === "user" && "justify-end")}
+              >
+                {msg.role !== "user" && (
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                    {msg.role === "system" ? (
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    ) : (
+                      <Bot className="h-3.5 w-3.5 text-primary" />
+                    )}
+                  </div>
+                )}
+
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-lg p-3",
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : msg.role === "system"
+                        ? "bg-muted/30 border border-border"
+                        : "bg-card border border-border"
+                  )}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+
+                  {msg.metadata && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {msg.metadata.confidence != null && (
+                        <Badge variant="outline" className="text-2xs">
+                          {(msg.metadata.confidence * 100).toFixed(0)}% confidence
+                        </Badge>
+                      )}
+                      {msg.metadata.model && (
+                        <Badge variant="ghost" className="text-2xs">
+                          {msg.metadata.model}
+                        </Badge>
+                      )}
+                      {msg.metadata.tokensUsed && (
+                        <Badge variant="ghost" className="text-2xs">
+                          {msg.metadata.tokensUsed} tokens
+                        </Badge>
+                      )}
+                      {msg.metadata.sources?.map((s) => (
+                        <Badge key={s} variant="cyan" className="text-2xs">
+                          {s}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <span className="text-2xs text-muted-foreground opacity-60">
+                      {msg.timestamp.toLocaleTimeString()}
+                    </span>
+                    {msg.role === "assistant" && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleCopy(msg.content)}
+                        className="opacity-0 group-hover:opacity-100"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {msg.role === "user" && (
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <Bot className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </div>
 
-      {/* Chat Area */}
-      <Card className="flex flex-1 flex-col overflow-hidden">
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4"
+      {/* Input bar */}
+      <div className="border-t border-border bg-card/50 p-4">
+        <form
+          onSubmit={handleSubmit}
+          className="mx-auto flex max-w-3xl items-end gap-2"
         >
-          {/* Empty state */}
-          {messages.length === 0 && (
-            <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
-              <div className="rounded-full bg-primary/10 p-4">
-                <MessageSquare className="h-8 w-8 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold">How can I help?</h2>
-                <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-                  I&apos;m CLIF AI — ask me about security events, attack patterns,
-                  MITRE ATT&CK mappings, or investigation workflows.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 max-w-lg">
-                {SUGGESTIONS.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => sendMessage(s.label)}
-                    className="flex items-center gap-2 rounded-lg border bg-card p-3 text-left text-xs transition-colors hover:bg-muted/50"
-                  >
-                    <s.icon className={`h-4 w-4 shrink-0 ${s.color}`} />
-                    <span>{s.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={clearChat}
+            title="Clear chat"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
 
-          {/* Messages */}
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex gap-3 ${
-                msg.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              {msg.role === "assistant" && (
-                <div className="shrink-0 mt-1">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
-                    <Bot className="h-4 w-4 text-primary" />
-                  </div>
-                </div>
-              )}
-              <div
-                className={`max-w-[75%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/50 border"
-                }`}
-              >
-                {msg.role === "assistant" ? (
-                  <div className="space-y-0">{renderMarkdown(msg.content)}</div>
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                )}
-                {/* Meta */}
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="text-[10px] opacity-60">
-                    {msg.timestamp.toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  {msg.role === "assistant" && msg.llmUsed !== undefined && (
-                    <span className={`text-[10px] ${msg.llmUsed ? "text-emerald-600" : "text-amber-600"}`}>
-                      {msg.llmUsed ? "LLM" : "Built-in"}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {msg.role === "user" && (
-                <div className="shrink-0 mt-1">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/10">
-                    <User className="h-4 w-4 text-blue-600" />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Typing indicator */}
-          {sending && (
-            <div className="flex gap-3">
-              <div className="shrink-0 mt-1">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
-                  <Bot className="h-4 w-4 text-primary" />
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-lg bg-muted/50 border px-4 py-3">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Thinking…</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="border-t bg-card p-4">
-          <div className="flex gap-2">
+          <div className="relative flex-1">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about security events, attacks, MITRE ATT&CK, XAI…"
-              className="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+              placeholder="Ask CLIF AI about security events, threats, investigations..."
+              className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               rows={1}
-              disabled={sending}
+              style={{ minHeight: 40, maxHeight: 120 }}
+              disabled={isLoading}
             />
-            <Button
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || sending}
-              className="gap-1.5 shrink-0"
-            >
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Send
-            </Button>
           </div>
-          <p className="mt-1.5 text-[10px] text-muted-foreground">
-            Press Enter to send, Shift+Enter for new line. Uses local Ollama qwen3-vl:4b model.
-          </p>
-        </div>
-      </Card>
+
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || isLoading}
+            className="shrink-0"
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </form>
+      </div>
+      </div>
     </div>
   );
 }

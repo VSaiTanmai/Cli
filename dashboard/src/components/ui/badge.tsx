@@ -3,28 +3,28 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium transition-colors",
+  "inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium transition-colors",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary/10 text-primary",
-        secondary: "border-transparent bg-secondary text-secondary-foreground",
-        destructive: "border-transparent bg-destructive/10 text-destructive",
-        outline: "text-foreground",
-        critical: "border-transparent bg-red-600 text-white",
-        high: "border-transparent bg-orange-500 text-white",
-        medium: "border-transparent bg-amber-500 text-white",
-        low: "border-transparent bg-emerald-500 text-white",
-        info: "border-transparent bg-slate-400 text-white",
-        in_progress: "border-transparent bg-amber-400 text-amber-900",
-        open: "border-transparent bg-orange-500 text-white",
-        closed: "border-transparent bg-gray-400 text-white",
+        default:   "bg-primary/10 text-primary border-primary/20",
+        secondary: "bg-secondary text-secondary-foreground border-transparent",
+        outline:   "bg-transparent text-foreground border-border",
+        critical:  "sev-critical border",
+        high:      "sev-high border",
+        medium:    "sev-medium border",
+        low:       "sev-low border",
+        info:      "sev-info border",
+        success:   "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+        warning:   "bg-amber-500/10 text-amber-400 border-amber-500/20",
+        destructive: "bg-destructive/10 text-destructive border-destructive/20",
+        cyan:      "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+        purple:    "bg-violet-500/10 text-violet-400 border-violet-500/20",
+        ghost:     "bg-transparent text-muted-foreground border-transparent hover:bg-muted",
       },
     },
-    defaultVariants: {
-      variant: "default",
-    },
-  },
+    defaultVariants: { variant: "default" },
+  }
 );
 
 export interface BadgeProps
@@ -32,7 +32,9 @@ export interface BadgeProps
     VariantProps<typeof badgeVariants> {}
 
 function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+  return (
+    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+  );
 }
 
 export { Badge, badgeVariants };

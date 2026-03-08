@@ -12,17 +12,10 @@ export interface DashboardMetrics {
   evidenceBatches?: number;
   evidenceAnchored?: number;
   mitreTopTechniques?: Array<{ technique: string; tactic: string; count: number }>;
-  /* ── New: competitive feature additions ── */
   riskScore?: number;
-  riskTrend?: number;
   mttr?: number;
-  mttrTrend?: number;
   riskyEntities?: Array<{ entity: string; type: "user" | "host" | "ip"; riskScore: number; alertCount: number }>;
   mitreTacticHeatmap?: Array<{ tactic: string; techniques: number; alerts: number }>;
-  /** Previous period values for KPI sparkline trends */
-  prevTotalEvents?: number;
-  prevActiveAlerts?: number;
-  prevIngestRate?: number;
 }
 
 /* ── Generic event row ── */

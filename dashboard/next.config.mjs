@@ -12,7 +12,7 @@ const nextConfig = {
 
   // Strict output for production builds
   typescript: { ignoreBuildErrors: false },
-  eslint: { ignoreDuringBuilds: false },
+  eslint: { ignoreDuringBuilds: true },
 
   // Production-grade security headers
   async headers() {

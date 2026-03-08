@@ -32,28 +32,6 @@
       "avgResponseTime": "3.8s",
       "lastAction": "Confirmed INV-2026-001 as true positive — no FP patterns matched",
       "lastActionTime": "2026-02-11T10:45:00Z"
-    },
-    {
-      "id": "escalation",
-      "name": "Escalation Agent",
-      "status": "Active",
-      "description": "Determines when human intervention is needed",
-      "casesProcessed": 24,
-      "accuracy": 98.3,
-      "avgResponseTime": "0.8s",
-      "lastAction": "Escalated INV-2026-003 to SOC Lead — DNS exfiltration requires containment approval",
-      "lastActionTime": "2026-02-11T10:52:00Z"
-    },
-    {
-      "id": "reporter",
-      "name": "Reporter Agent",
-      "status": "Idle",
-      "description": "Generates investigation summaries and reports",
-      "casesProcessed": 67,
-      "accuracy": 96.8,
-      "avgResponseTime": "8.2s",
-      "lastAction": "Generated technical report for INV-2026-004 (Mimikatz — 4 pages)",
-      "lastActionTime": "2026-02-11T10:30:00Z"
     }
   ],
   "recentActivity": [
@@ -68,19 +46,9 @@
       "action": "Investigating INV-2026-001: Traced authentication chain C102 → C4501 (Kerberos/Interactive) → C892 (NTLM/Network) → DC01 (Kerberos/TGS). 3-hop lateral movement confirmed. Temporal window: 4 minutes 23 seconds."
     },
     {
-      "timestamp": "2026-02-11T10:52:00Z",
-      "agent": "Escalation Agent",
-      "action": "INV-2026-003 severity elevated to Critical. DNS tunneling volume exceeds 50KB encoded payload. Recommending immediate network isolation of C1923. Awaiting SOC Lead approval."
-    },
-    {
       "timestamp": "2026-02-11T10:45:00Z",
       "agent": "Verifier Agent",
       "action": "Cross-referenced INV-2026-001 against 847 historical FP patterns. No match found. Authentication chain timing and target selection inconsistent with legitimate administrative patterns. Verified as true positive."
-    },
-    {
-      "timestamp": "2026-02-11T10:30:00Z",
-      "agent": "Reporter Agent",
-      "action": "Generated technical analysis report for INV-2026-004 (Mimikatz Detection). Report includes: process execution timeline, LSASS access evidence, hash verification, 3 blockchain-anchored evidence artifacts, MITRE ATT&CK mapping."
     },
     {
       "timestamp": "2026-02-11T10:15:00Z",
