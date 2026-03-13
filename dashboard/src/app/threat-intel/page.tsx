@@ -120,6 +120,7 @@ export default function ThreatIntelPage() {
   const [typeFilter, setTypeFilter] = useState("All Types");
   const [confFilter, setConfFilter] = useState(0);
   const [expandedPattern, setExpandedPattern] = useState<string | null>(null);
+  const [selectedBubble, setSelectedBubble] = useState<string | null>(null);
   const [investigations, setInvestigations] = useState<Investigation[]>([]);
 
   useEffect(() => {
@@ -155,133 +156,84 @@ export default function ThreatIntelPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ═══ HEADER ═══ */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Globe className="h-5 w-5 text-primary" />
-            Threat Intelligence
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            IOC management, threat patterns, MITRE ATT&CK mapping, and AI-driven enrichment
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={refresh}>
-          <RefreshCw className="mr-1 h-3 w-3" /> Refresh
-        </Button>
-      </div>
-
-      {/* ═══ STATS STRIP — 4 Cards ═══ */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Total IOCs</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{formatNumber(stats?.totalIOCs || iocs.length)}</p>
+    <div className="-m-6 -mt-4">
+      {/* ═══ STATS HERO ═══ */}
+      <div className="bg-white border-b border-border">
+        <div className="px-10 py-12 max-w-[1600px] w-full mx-auto">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-primary/10 text-primary text-[11px] font-black uppercase tracking-tighter rounded">Live Intelligence</span>
+                <span className="text-muted-foreground text-sm font-medium">Real-time threat monitoring</span>
               </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10">
-                <Shield className="h-4 w-4 text-red-500" />
-              </div>
+              <h1 className="text-4xl lg:text-5xl font-extrabold text-foreground tracking-tight leading-[1.1]">
+                Threat <span className="text-primary inline-block">Intelligence</span>
+              </h1>
+              <p className="text-sm text-muted-foreground max-w-xl">IOC management, threat patterns, MITRE ATT&CK mapping, and AI-driven enrichment across global feeds.</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Active Threats</p>
-                <p className="text-2xl font-bold text-red-500 mt-1">{formatNumber(stats?.activeThreats || patterns.length)}</p>
-              </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/10">
-                <AlertTriangle className="h-4 w-4 text-orange-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">MITRE Techniques</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{formatNumber(stats?.mitreTechniques || 42)}</p>
-              </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10">
-                <Target className="h-4 w-4 text-emerald-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Last Updated</p>
-                <p className="text-lg font-semibold text-foreground mt-1">{stats?.lastUpdated ? timeAgo(stats.lastUpdated) : "2 mins ago"}</p>
-              </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                <Clock className="h-4 w-4 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ═══ AI-DRIVEN IOC ENRICHMENT BANNER ═══ */}
-      <div className="relative overflow-hidden rounded-xl p-5" style={{ background: "linear-gradient(135deg, #f97316 0%, #ea580c 50%, #dc2626 100%)" }}>
-        <div className="flex items-center justify-between relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20 backdrop-blur">
-              <Brain className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">AI-Driven IOC Enrichment</p>
-              <p className="text-xs text-white/70">Automated pipeline processing real-time telemetry from 14 global feeds.</p>
+            <div className="flex gap-3 shrink-0">
+              <button onClick={refresh} className="flex items-center gap-2 px-5 py-2.5 bg-muted/50 border border-border rounded-2xl text-sm font-semibold hover:bg-accent transition-colors">
+                <RefreshCw className="w-4 h-4" /> Refresh
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {[
-              { label: "Triage", color: "bg-amber-400" },
-              { label: "Hunter", color: "bg-cyan-400" },
-              { label: "Verifier", color: "bg-emerald-400" },
-            ].map((a) => (
-              <span key={a.label} className={cn("px-3 py-1 rounded-full text-[10px] font-bold text-white/90", a.color + "/30 border border-white/20")}>
-                <span className={cn("inline-block w-1.5 h-1.5 rounded-full mr-1.5", a.color)} />
-                {a.label}
-              </span>
-            ))}
-            <Link href="/explainability">
-              <Button size="sm" className="bg-white text-orange-600 hover:bg-white/90 font-bold text-xs">
-                View Deep Analysis
-              </Button>
-            </Link>
-          </div>
-        </div>
-        {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-20 w-32 h-32 bg-white/5 rounded-full translate-y-1/2" />
-      </div>
-
-      {/* ═══ ATTACK TIMELINE + IOC TYPE DISTRIBUTION ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Attack Timeline (2/3 width) */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Activity className="h-4 w-4 text-red-500" />
-                Attack Timeline (24h)
-              </CardTitle>
-              <div className="flex items-center gap-3 text-2xs">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Critical</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400" /> High</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-400" /> Medium</span>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total IOCs</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-foreground">{formatNumber(stats?.totalIOCs || iocs.length)}</h3>
+                <span className="text-emerald-500 text-xs font-bold flex items-center gap-0.5"><Activity className="w-3 h-3" /> +12%</span>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-52">
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Active Threats</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-red-500">{formatNumber(stats?.activeThreats || patterns.length)}</h3>
+                <span className="text-muted-foreground text-xs font-bold uppercase tracking-tighter">Monitoring</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">MITRE Techniques</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-foreground">{formatNumber(stats?.mitreTechniques || 42)}</h3>
+                <span className="text-red-500 text-xs font-bold flex items-center gap-0.5"><Activity className="w-3 h-3" /> +2</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Last Updated</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-foreground">{stats?.lastUpdated ? timeAgo(stats.lastUpdated) : <><span>2</span> <span className="text-lg">mins</span></>}</h3>
+                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-tighter">Real-time sync</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ 12-COL GRID ═══ */}
+      <div className="grid grid-cols-12">
+        {/* LEFT COLUMN */}
+        <div className="col-span-12 xl:col-span-8 flex flex-col">
+
+          {/* Attack Timeline */}
+          <section className="px-10 py-12 bg-white border-t border-border">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-red-50 text-red-500 rounded-2xl">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Attack Timeline (24h)</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">2.4k Total hits detected</p>
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[10px] font-black text-muted-foreground uppercase">Critical</span></div>
+                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-orange-400" /><span className="text-[10px] font-black text-muted-foreground uppercase">High</span></div>
+                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-cyan-400" /><span className="text-[10px] font-black text-muted-foreground uppercase">Medium</span></div>
+              </div>
+            </div>
+            <div className="h-[420px] bg-white rounded-[2.5rem] border border-border p-8 shadow-sm">
               <ResponsiveContainer>
                 <AreaChart data={TIMELINE_DATA}>
                   <defs>
@@ -292,445 +244,468 @@ export default function ThreatIntelPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="hour" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} interval={3} />
                   <YAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 11 }} />
+                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 11 }} />
                   <Area type="monotone" dataKey="critical" stroke="#ef4444" fill="url(#critG)" strokeWidth={2} name="Critical" />
                   <Area type="monotone" dataKey="high" stroke="#f97316" fill="url(#highG)" strokeWidth={1.5} name="High" />
                   <Area type="monotone" dataKey="medium" stroke="#06b6d4" fill="url(#medG)" strokeWidth={1} name="Medium" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* IOC Type Distribution */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Eye className="h-4 w-4 text-primary" />
-              IOC Type Distribution
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 mt-2">
-              {TYPE_DIST.map((t) => (
-                <div key={t.type} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-foreground">{t.type}</span>
-                    <span className="text-xs font-bold text-foreground">{t.pct}%</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-muted/30 overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${t.pct}%`, background: t.color }} />
-                  </div>
+          {/* Threat Feed Status Table */}
+          <section className="px-10 py-12 bg-white border-t border-border">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-slate-900 text-white rounded-2xl">
+                  <Wifi className="w-5 h-5" />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ═══ MITRE ATT&CK BUBBLE CHART + KILL CHAIN ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* MITRE Coverage Bubble Chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Target className="h-4 w-4 text-primary" />
-                MITRE ATT&CK Coverage
-              </CardTitle>
-              <div className="flex items-center gap-3 text-2xs">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /> Active (8)</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300" /> Inactive (4)</span>
+                <h3 className="text-2xl font-extrabold text-foreground">Threat Feed Status</h3>
               </div>
+              <button onClick={refresh} className="text-[11px] font-black text-primary uppercase tracking-[0.2em] hover:underline">Force Sync All</button>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-56">
-              <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis
-                    type="number" dataKey="x" domain={[0, 13]} name="Tactic"
-                    tick={{ fontSize: 0 }} axisLine={false} tickLine={false}
-                  />
-                  <YAxis
-                    type="number" dataKey="y" domain={[0, 100]} name="Activity"
-                    tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
-                    axisLine={false} tickLine={false} label={{ value: "Activity %", angle: -90, position: "insideLeft", fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <ZAxis type="number" dataKey="z" range={[40, 400]} />
-                  <RechartsTooltip
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 11 }}
-                    formatter={(value: number, name: string) => {
-                      if (name === "Activity") return [`${value}%`, "Activity Level"];
-                      return [value, name];
-                    }}
-                    labelFormatter={(_, payload) => {
-                      if (payload?.[0]?.payload) {
-                        const d = payload[0].payload;
-                        return `${d.id} — ${d.name}`;
-                      }
-                      return "";
-                    }}
-                  />
-                  <Scatter data={MITRE_BUBBLE_DATA}>
-                    {MITRE_BUBBLE_DATA.map((entry, idx) => (
-                      <Cell
-                        key={idx}
-                        fill={entry.active ? "#f97316" : "#94a3b8"}
-                        fillOpacity={entry.active ? 0.7 : 0.3}
-                        stroke={entry.active ? "#ea580c" : "#cbd5e1"}
-                        strokeWidth={1.5}
-                      />
-                    ))}
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            {/* Tactic labels below chart */}
-            <div className="flex justify-between px-2 mt-1">
-              {MITRE_BUBBLE_DATA.map((t) => (
-                <span key={t.id} className={cn("text-[7px] font-bold uppercase text-center leading-tight w-[60px]", t.active ? "text-orange-600" : "text-muted-foreground/50")}>
-                  {t.name}
-                </span>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Kill Chain Activity */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Zap className="h-4 w-4 text-orange-500" />
-              Cyber Kill Chain Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-              {KILL_CHAIN.map((k) => (
-                <div key={k.stage} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">{k.stage}</span>
-                    <span className="text-[10px] font-mono text-muted-foreground">{k.count || `${k.pct}%`}</span>
-                  </div>
-                  <div className="w-full h-1.5 rounded-full bg-muted/30 overflow-hidden">
-                    <div className={cn("h-full rounded-full", k.color)} style={{ width: `${k.pct}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ═══ THREAT FEED STATUS + HIGH-RISK ENTITIES ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Threat Feed Status */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Wifi className="h-4 w-4 text-emerald-500" />
-              Threat Feed Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="pb-2 font-medium">FEED SOURCE</th>
-                    <th className="pb-2 font-medium">LAST SYNC</th>
-                    <th className="pb-2 font-medium">IOCS PULLED</th>
-                    <th className="pb-2 font-medium text-right">HEALTH</th>
+            <div className="bg-muted/20 rounded-2xl overflow-hidden border border-border">
+              <table className="w-full text-left">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Feed Source</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Last Sync</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">IOCs Pulled</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Health</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/50">
                   {THREAT_FEEDS.map((f) => (
-                    <tr key={f.name} className="border-b border-border/30 last:border-0">
-                      <td className="py-2.5 font-medium text-foreground">{f.name}</td>
-                      <td className="py-2.5 text-muted-foreground">{f.sync}</td>
-                      <td className="py-2.5 font-mono">{formatNumber(f.iocs)}</td>
-                      <td className="py-2.5 text-right">
-                        <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold", f.hcls)}>{f.health}</span>
+                    <tr key={f.name} className="hover:bg-card transition-colors">
+                      <td className="px-6 py-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                            <Globe className="w-4 h-4" />
+                          </div>
+                          <span className="font-bold text-foreground">{f.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-6 text-sm text-muted-foreground">{f.sync}</td>
+                      <td className="px-6 py-6 text-sm font-bold text-foreground font-mono">{formatNumber(f.iocs)}</td>
+                      <td className="px-6 py-6">
+                        <span className={cn("px-3 py-1 text-[10px] font-black rounded uppercase", f.hcls)}>{f.health}</span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* High-Risk Entities */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              High-Risk Entities
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
+          {/* IOC Matches Table */}
+          <section className="px-10 py-16 bg-white border-t border-border flex-1">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <h3 className="text-2xl font-extrabold text-foreground">Recent IOC Matches</h3>
+              </div>
+              <div className="flex gap-3">
+                <div className="relative">
+                  <Filter className="absolute left-3.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder="Search threats..."
+                    className="w-56 bg-card border border-border rounded-full pl-9 pr-4 py-2 text-sm focus:ring-1 focus:ring-primary/30 focus:outline-none transition-all"
+                  />
+                </div>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="px-4 py-2 bg-card border border-border rounded-full text-xs font-medium text-foreground outline-none"
+                >
+                  <option>All Types</option>
+                  <option>ipv4</option>
+                  <option>domain</option>
+                  <option>sha256</option>
+                  <option>url</option>
+                  <option>email</option>
+                </select>
+                <select
+                  value={confFilter}
+                  onChange={(e) => setConfFilter(Number(e.target.value))}
+                  className="px-4 py-2 bg-card border border-border rounded-full text-xs font-medium text-foreground outline-none"
+                >
+                  <option value={0}>All Confidence</option>
+                  <option value={80}>Confidence &gt; 80</option>
+                  <option value={90}>Confidence &gt; 90</option>
+                </select>
+                {filter && <button onClick={() => setFilter("")} className="text-[10px] font-black text-primary uppercase tracking-wider hover:underline">Clear</button>}
+              </div>
+            </div>
+            <div className="bg-card rounded-[2.5rem] overflow-hidden border border-border shadow-sm">
+              <table className="w-full text-left">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Type</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Value</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Confidence</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Source</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">MITRE</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Last Seen</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {filteredIOCs.map((ioc, i) => {
+                    const IconComp = IOC_ICONS[ioc.type.toLowerCase()] || Shield;
+                    return (
+                      <tr key={i} className="hover:bg-muted/10 transition-colors">
+                        <td className="px-6 py-6">
+                          <span className="px-2.5 py-1 bg-slate-900 text-white rounded text-[10px] font-black uppercase flex items-center gap-1.5 w-fit">
+                            <IconComp className="h-2.5 w-2.5" />{ioc.type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-6 font-mono text-xs text-muted-foreground max-w-[240px] truncate">{ioc.value}</td>
+                        <td className="px-6 py-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-20 h-1.5 bg-muted/30 rounded-full overflow-hidden">
+                              <div className={cn("h-full rounded-full", ioc.confidence >= 90 ? "bg-red-500" : ioc.confidence >= 70 ? "bg-primary" : "bg-amber-400")} style={{ width: `${ioc.confidence}%` }} />
+                            </div>
+                            <span className="text-xs font-black" style={{ color: ioc.confidence >= 90 ? "#ef4444" : ioc.confidence >= 70 ? "#2563eb" : "#f59e0b" }}>{ioc.confidence}%</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-6 text-xs text-muted-foreground">{ioc.source || "—"}</td>
+                        <td className="px-6 py-6">
+                          {ioc.mitre ? <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded uppercase">{ioc.mitre}</span> : "—"}
+                        </td>
+                        <td className="px-6 py-6 text-xs text-muted-foreground">{ioc.lastSeen ? timeAgo(ioc.lastSeen) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filteredIOCs.length === 0 && (
+                <div className="py-16 text-center text-sm text-muted-foreground">
+                  {filter || typeFilter !== "All Types" || confFilter > 0 ? "No IOCs match your filters" : "No IOCs available"}
+                </div>
+              )}
+            </div>
+          </section>
+
+        </div>
+
+        {/* RIGHT SIDEBAR */}
+        <aside className="col-span-12 xl:col-span-4 bg-white border-l border-border/80 p-8 space-y-10">
+
+          {/* IOC Type Distribution */}
+          <section>
+            <div className="flex items-center gap-3 mb-6 px-2">
+              <div className="w-10 h-10 bg-card shadow-sm text-primary rounded-xl flex items-center justify-center border border-border">
+                <Eye className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">IOC Type Distribution</h3>
+            </div>
+            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm space-y-5">
+              {TYPE_DIST.map((t) => (
+                <div key={t.type} className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                    <span>{t.type}</span>
+                    <span className="text-foreground">{t.pct}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-muted/30 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${t.pct}%`, background: t.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Kill Chain Activity */}
+          <section>
+            <div className="flex items-center gap-3 mb-6 px-2">
+              <div className="p-2.5 bg-orange-50 text-orange-500 rounded-xl">
+                <Zap className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Cyber Kill Chain</h3>
+            </div>
+            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm space-y-4">
+              {KILL_CHAIN.map((k) => (
+                <div key={k.stage}>
+                  <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase mb-1.5">
+                    <span>{k.stage}</span>
+                    <span className="text-foreground">{k.count || `${k.pct}%`}</span>
+                  </div>
+                  <div className="h-2 w-full bg-muted/30 rounded-full overflow-hidden">
+                    <div className={cn("h-full rounded-full", k.color)} style={{ width: `${k.pct}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* High-Risk Entities */}
+          <section>
+            <div className="flex items-center gap-3 mb-6 px-2">
+              <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">High-Risk Entities</h3>
+            </div>
+            <div className="space-y-3">
               {RISKY_ENTITIES.map((e) => (
-                <div key={e.name} className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted/10 transition-colors">
+                <div key={e.name} className="bg-card rounded-2xl p-5 border border-border shadow-sm flex items-center justify-between hover:border-primary/30 transition-all">
                   <div className="flex items-center gap-3">
-                    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center bg-gradient-to-br text-white text-[10px] font-bold", e.color)}>
+                    <div className={cn("h-9 w-9 rounded-full flex items-center justify-center bg-gradient-to-br text-white text-[10px] font-bold", e.color)}>
                       {e.type === "user" ? <User className="h-3.5 w-3.5" /> : <Monitor className="h-3.5 w-3.5" />}
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-foreground">{e.name}</p>
+                      <p className="text-xs font-bold text-foreground">{e.name}</p>
                       {e.label && <p className="text-[10px] text-muted-foreground">{e.label}</p>}
                     </div>
                   </div>
-                  <div className={cn(
-                    "text-sm font-bold tabular-nums",
-                    e.score >= 90 ? "text-red-500" : e.score >= 70 ? "text-orange-500" : "text-amber-500"
-                  )}>
-                    {e.score}
-                  </div>
+                  <span className={cn("text-lg font-extrabold tabular-nums", e.score >= 90 ? "text-red-500" : e.score >= 70 ? "text-orange-500" : "text-amber-500")}>{e.score}</span>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </section>
 
-      {/* ═══ RECENT CRITICAL ALERTS + INVESTIGATION MATCHES ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent Critical Alerts */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-                Recent Critical Alerts
-              </CardTitle>
-              <Link href="/investigations">
-                <Button variant="ghost" size="sm" className="text-xs text-primary">View All</Button>
-              </Link>
+          {/* Critical Alerts */}
+          <section>
+            <div className="flex items-center justify-between mb-6 px-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-card shadow-sm text-red-500 rounded-xl flex items-center justify-center border border-border">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-extrabold text-foreground">Critical Alerts</h3>
+              </div>
+              <Link href="/investigations" className="text-[10px] font-black text-primary uppercase tracking-[0.15em] hover:underline">View All</Link>
             </div>
-          </CardHeader>
-          <CardContent>
             <div className="space-y-3">
               {RECENT_ALERTS.map((a) => (
-                <div key={a.title} className="flex items-start gap-3 p-3 rounded-lg border border-border/50 hover:border-primary/20 transition-colors">
-                  <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full mt-0.5", a.sev === "CRITICAL" ? "bg-red-500/10" : "bg-orange-500/10")}>
-                    <AlertTriangle className={cn("h-3.5 w-3.5", a.sev === "CRITICAL" ? "text-red-500" : "text-orange-500")} />
+                <div key={a.title} className="bg-card rounded-2xl p-5 border border-border shadow-sm hover:border-primary/30 transition-all cursor-pointer group">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase rounded", a.sev === "CRITICAL" ? "bg-red-50 text-red-600" : "bg-primary/10 text-primary")}>{a.sev}</span>
+                    <span className="text-[10px] font-bold text-muted-foreground">{a.time}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h4 className="text-xs font-semibold text-foreground">{a.title}</h4>
-                      <Badge variant={a.sev === "CRITICAL" ? "critical" : "high"} className="text-2xs">{a.sev}</Badge>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground line-clamp-1">{a.desc}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="purple" className="text-2xs">{a.mitre}</Badge>
-                      <span className="text-[10px] text-muted-foreground">{a.time}</span>
-                    </div>
+                  <h4 className="font-bold text-foreground text-sm mb-1 group-hover:text-primary transition-colors">{a.title}</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{a.desc}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded uppercase">{a.mitre}</span>
                   </div>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* Investigation Matches */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Link2 className="h-4 w-4 text-primary" />
-              Investigation Matches
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          {/* MITRE ATT&CK Tactic Bubbles */}
+          <section>
+            <div className="flex items-center gap-3 mb-6 px-2">
+              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Target className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-foreground">MITRE ATT&CK Tactics</h3>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{MITRE_BUBBLE_DATA.filter(t => t.active).length} Active · {MITRE_BUBBLE_DATA.filter(t => !t.active).length} Inactive</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl p-6 border border-border shadow-sm">
+              {/* Packed bubble cluster */}
+              {(() => {
+                const sorted = [...MITRE_BUBBLE_DATA].sort((a, b) => b.z - a.z);
+                const radii = sorted.map(t => Math.max(26, Math.round(t.z / 6.4)));
+                // Simple circle-packing: place each circle touching previously placed ones
+                const positions: { x: number; y: number; r: number; data: typeof MITRE_BUBBLE_DATA[0] }[] = [];
+                sorted.forEach((t, i) => {
+                  const r = radii[i];
+                  if (i === 0) {
+                    positions.push({ x: 0, y: 0, r, data: t });
+                  } else {
+                    let bestX = 0, bestY = 0, bestDist = Infinity;
+                    // Try placing against each existing circle at multiple angles
+                    for (const p of positions) {
+                      for (let a = 0; a < 360; a += 15) {
+                        const rad = (a * Math.PI) / 180;
+                        const dist = p.r + r + 2;
+                        const cx = p.x + Math.cos(rad) * dist;
+                        const cy = p.y + Math.sin(rad) * dist;
+                        // Check no overlap with any existing
+                        let valid = true;
+                        for (const q of positions) {
+                          const dx = cx - q.x, dy = cy - q.y;
+                          if (Math.sqrt(dx * dx + dy * dy) < q.r + r + 1) { valid = false; break; }
+                        }
+                        if (valid) {
+                          const d = Math.sqrt(cx * cx + cy * cy);
+                          if (d < bestDist) { bestDist = d; bestX = cx; bestY = cy; }
+                        }
+                      }
+                    }
+                    positions.push({ x: bestX, y: bestY, r, data: t });
+                  }
+                });
+                // Compute bounding box & center
+                const minX = Math.min(...positions.map(p => p.x - p.r));
+                const maxX = Math.max(...positions.map(p => p.x + p.r));
+                const minY = Math.min(...positions.map(p => p.y - p.r));
+                const maxY = Math.max(...positions.map(p => p.y + p.r));
+                const w = maxX - minX;
+                const h = maxY - minY;
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+
+                return (
+                  <div className="relative mx-auto" style={{ width: Math.max(w + 20, 260), height: Math.max(h + 20, 260) }}>
+                    {positions.map((p) => {
+                      const t = p.data;
+                      const size = p.r * 2;
+                      const isSelected = selectedBubble === t.id;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => setSelectedBubble(isSelected ? null : t.id)}
+                          className={cn(
+                            "absolute rounded-full flex flex-col items-center justify-center cursor-pointer transition-all duration-300 select-none",
+                            t.active
+                              ? isSelected
+                                ? "bg-primary text-white shadow-lg shadow-primary/30 z-10 scale-110"
+                                : "bg-primary/10 text-primary hover:bg-primary/20 hover:scale-105 hover:z-10"
+                              : isSelected
+                                ? "bg-muted text-foreground shadow-md z-10 scale-110"
+                                : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:scale-105 hover:z-10 border border-border/50"
+                          )}
+                          style={{
+                            width: size,
+                            height: size,
+                            left: p.x - cx + (Math.max(w + 20, 260)) / 2 - p.r,
+                            top: p.y - cy + (Math.max(h + 20, 260)) / 2 - p.r,
+                          }}
+                        >
+                          <span className="font-extrabold leading-none" style={{ fontSize: Math.max(10, size / 4) }}>{t.y}</span>
+                          <span className={cn("font-black uppercase leading-tight text-center px-1 mt-0.5", size >= 60 ? "text-[7px]" : "text-[6px]")}>{t.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Detail panel for selected bubble */}
+              {selectedBubble && (() => {
+                const t = MITRE_BUBBLE_DATA.find(b => b.id === selectedBubble);
+                if (!t) return null;
+                return (
+                  <div className="mt-4 pt-4 border-t border-border animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-foreground">{t.name}</p>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">{t.id}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-extrabold text-primary">{t.y}</div>
+                        <div className="text-[8px] font-black text-muted-foreground uppercase">Detections</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-1.5 w-full bg-muted/30 rounded-full overflow-hidden">
+                      <div className={cn("h-full rounded-full transition-all duration-500", t.active ? "bg-primary" : "bg-muted-foreground/40")} style={{ width: `${t.y}%` }} />
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={cn("px-2 py-0.5 text-[9px] font-black rounded uppercase", t.active ? "bg-emerald-50 text-emerald-600" : "bg-muted text-muted-foreground")}>{t.active ? "Active" : "Inactive"}</span>
+                      <span className="text-[9px] text-muted-foreground">{t.z} total events</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </section>
+
+        </aside>
+      </div>
+
+      {/* ═══ FULL-WIDTH: INVESTIGATION MATCHES + THREAT PATTERNS ═══ */}
+      <section className="px-10 py-16 bg-white border-t border-border">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-[1600px] mx-auto">
+          {/* Investigation Matches */}
+          <div>
+            <div className="flex items-center justify-between mb-8 px-2">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                  <Link2 className="w-5 h-5" />
+                </div>
+                <h3 className="text-2xl font-extrabold text-foreground">Investigation Matches</h3>
+              </div>
+              <Link href="/investigations" className="text-[11px] font-black text-primary uppercase tracking-widest hover:underline">View All</Link>
+            </div>
             {investigations.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {investigations.slice(0, 4).map((inv) => (
                   <Link key={inv.id} href={`/investigations/${inv.id}`}>
-                    <div className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted/10 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <Badge variant={inv.severity >= 4 ? "critical" : inv.severity >= 3 ? "high" : "medium"} className="text-2xs shrink-0">S{inv.severity}</Badge>
+                    <div className="bg-muted/20 rounded-2xl p-5 border border-border hover:border-primary/30 transition-all cursor-pointer group flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase rounded", inv.severity >= 4 ? "bg-red-50 text-red-600" : inv.severity >= 3 ? "bg-orange-50 text-orange-600" : "bg-amber-50 text-amber-600")}>S{inv.severity}</span>
                         <div>
-                          <p className="text-xs font-medium text-foreground line-clamp-1">{inv.title}</p>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-[10px] text-muted-foreground">{inv.eventCount} events</span>
+                          <p className="text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">{inv.title}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-muted-foreground font-bold">{inv.eventCount} events</span>
                             {inv.tags?.slice(0, 2).map((t) => (
-                              <Badge key={t} variant="purple" className="text-2xs">{t}</Badge>
+                              <span key={t} className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[9px] font-black rounded uppercase">{t}</span>
                             ))}
                           </div>
                         </div>
                       </div>
-                      <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
                     </div>
                   </Link>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground py-6 text-center">No active investigations</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ═══ TABBED SECTION: IOCs + Threat Patterns + Reports ═══ */}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="iocs"><Shield className="mr-1 h-3 w-3" /> Indicators of Compromise</TabsTrigger>
-          <TabsTrigger value="patterns"><Target className="mr-1 h-3 w-3" /> Threat Patterns</TabsTrigger>
-          <TabsTrigger value="reports"><FileText className="mr-1 h-3 w-3" /> Reports</TabsTrigger>
-        </TabsList>
-
-        {/* IOCs Tab */}
-        <TabsContent value="iocs" className="mt-4 space-y-4">
-          {/* Filters Row */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-medium text-foreground outline-none"
-            >
-              <option>All Types</option>
-              <option>ipv4</option>
-              <option>domain</option>
-              <option>sha256</option>
-              <option>url</option>
-              <option>email</option>
-            </select>
-            <select
-              value={confFilter}
-              onChange={(e) => setConfFilter(Number(e.target.value))}
-              className="px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-medium text-foreground outline-none"
-            >
-              <option value={0}>All Confidence</option>
-              <option value={80}>Confidence &gt; 80</option>
-              <option value={90}>Confidence &gt; 90</option>
-            </select>
-            <div className="relative flex-1 min-w-[200px]">
-              <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Search threats, IPs, hashes..."
-                className="pl-8 h-9 text-sm"
-              />
-            </div>
-            {filter && <Button variant="ghost" size="sm" className="text-xs" onClick={() => setFilter("")}>Clear</Button>}
-            <Button size="sm" className="ml-auto bg-red-500 hover:bg-red-600 text-white text-xs font-bold">
-              + Add Manual IOC
-            </Button>
-          </div>
-
-          {/* IOC Table */}
-          <ScrollArea className="h-[500px]">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-card z-10">
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="pb-2 font-medium px-1">TYPE</th>
-                  <th className="pb-2 font-medium px-1">VALUE</th>
-                  <th className="pb-2 font-medium px-1">CONFIDENCE</th>
-                  <th className="pb-2 font-medium px-1">SOURCE</th>
-                  <th className="pb-2 font-medium px-1">MITRE</th>
-                  <th className="pb-2 font-medium px-1">LAST SEEN</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredIOCs.map((ioc, i) => {
-                  const IconComp = IOC_ICONS[ioc.type.toLowerCase()] || Shield;
-                  return (
-                    <tr key={i} className="border-b border-border/30 hover:bg-muted/10 transition-colors">
-                      <td className="py-3 px-1">
-                        <Badge variant="outline" className="text-2xs gap-1">
-                          <IconComp className="h-2.5 w-2.5" />{ioc.type}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-1 font-mono text-foreground max-w-[240px] truncate">{ioc.value}</td>
-                      <td className="py-3 px-1">
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-1.5 rounded-full bg-muted/30 overflow-hidden">
-                            <div className={cn("h-full rounded-full", ioc.confidence >= 90 ? "bg-red-500" : ioc.confidence >= 70 ? "bg-orange-400" : "bg-yellow-400")} style={{ width: `${ioc.confidence}%` }} />
-                          </div>
-                          <span className="font-mono font-bold">{ioc.confidence}%</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-1 text-muted-foreground">{ioc.source || "—"}</td>
-                      <td className="py-3 px-1">
-                        {ioc.mitre ? <Badge variant="purple" className="text-2xs">{ioc.mitre}</Badge> : "—"}
-                      </td>
-                      <td className="py-3 px-1 text-muted-foreground">{ioc.lastSeen ? timeAgo(ioc.lastSeen) : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {filteredIOCs.length === 0 && (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                {filter || typeFilter !== "All Types" || confFilter > 0 ? "No IOCs match your filters" : "No IOCs available"}
+              <div className="bg-muted/20 rounded-2xl p-12 border border-border text-center">
+                <p className="text-sm text-muted-foreground">No active investigations</p>
               </div>
             )}
-          </ScrollArea>
-        </TabsContent>
+          </div>
 
-        {/* Threat Patterns Tab */}
-        <TabsContent value="patterns" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {patterns.map((pattern, idx) => (
-              <Card key={idx} className="overflow-hidden hover:border-primary/20 transition-colors">
-                <CardContent className="p-0">
-                  <div className="flex items-start gap-3 p-4">
-                    <div className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full mt-0.5",
-                      pattern.severity >= 4 ? "bg-red-500/10" : "bg-orange-500/10"
-                    )}>
-                      <Target className={cn("h-4 w-4", pattern.severity >= 4 ? "text-red-500" : "text-orange-500")} />
+          {/* Threat Patterns */}
+          <div>
+            <div className="flex items-center gap-4 mb-8 px-2">
+              <div className="p-3 bg-orange-50 text-orange-500 rounded-2xl">
+                <Target className="w-5 h-5" />
+              </div>
+              <h3 className="text-2xl font-extrabold text-foreground">Threat Patterns</h3>
+            </div>
+            <div className="space-y-3">
+              {patterns.length > 0 ? patterns.map((pattern, idx) => (
+                <div key={idx} className="bg-muted/20 rounded-2xl p-5 border border-border hover:border-primary/30 transition-all cursor-pointer group"
+                  onClick={() => setExpandedPattern(expandedPattern === pattern.name ? null : pattern.name)}>
+                  <div className="flex items-start gap-4">
+                    <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl mt-0.5", pattern.severity >= 4 ? "bg-red-50 text-red-500" : "bg-orange-50 text-orange-500")}>
+                      <Target className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <Badge variant={pattern.severity >= 4 ? "critical" : "high"} className="text-2xs">
+                        <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase rounded", pattern.severity >= 4 ? "bg-red-50 text-red-600" : "bg-orange-50 text-orange-600")}>
                           {pattern.severity >= 4 ? "CRITICAL" : "HIGH"} · {pattern.mitre}
-                        </Badge>
+                        </span>
                       </div>
-                      <h4 className="text-sm font-semibold text-foreground">{pattern.name}</h4>
+                      <h4 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">{pattern.name}</h4>
                       <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{pattern.description}</p>
-                      <div className="flex items-center gap-3 mt-2">
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-4 mt-2">
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
                           <Shield className="h-2.5 w-2.5" /> {pattern.iocCount} Indicators
                         </span>
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
                           <Activity className="h-2.5 w-2.5" /> {pattern.matchedEvents} events
                         </span>
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-            {patterns.length === 0 && (
-              <div className="col-span-2 py-12 text-center text-sm text-muted-foreground">No threat patterns available</div>
-            )}
+                </div>
+              )) : (
+                <div className="bg-muted/20 rounded-2xl p-12 border border-border text-center">
+                  <p className="text-sm text-muted-foreground">No threat patterns available</p>
+                </div>
+              )}
+            </div>
           </div>
-        </TabsContent>
-
-        {/* Reports Tab */}
-        <TabsContent value="reports" className="mt-4">
-          <div className="py-12 text-center">
-            <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Threat intelligence reports will appear here</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Generate a report from AI Agents or Explainability to see it in this section</p>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* ═══ FOOTER ═══ */}
-      <div className="border-t border-border pt-4 flex items-center justify-between text-2xs text-muted-foreground">
-        <p>© 2024 CyberSentinel Threat Intelligence Platform. All rights reserved.</p>
-        <div className="flex items-center gap-4">
-          <Link href="/ai-agents" className="hover:text-foreground transition-colors">AI Agents</Link>
-          <Link href="/explainability" className="hover:text-foreground transition-colors">Feed Integration</Link>
-          <Link href="/investigations" className="hover:text-foreground transition-colors">Contact Support</Link>
-          <span>STATUS</span>
         </div>
-      </div>
+      </section>
+
     </div>
   );
 }

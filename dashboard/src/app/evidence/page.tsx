@@ -11,8 +11,7 @@ import {
   Fingerprint,
   Download,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePolling } from "@/hooks/use-polling";
@@ -140,171 +139,196 @@ export default function EvidencePage() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* TOP ACTION BAR */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-sm font-semibold text-foreground">Active Session:</span>
-          <span className="text-sm font-semibold text-emerald-600">Live</span>
-        </div>
-        <div className="relative flex-1 max-w-md">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search evidence IDs, batches, or entities" className="pl-10 h-9 bg-muted/30 border-border/50" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="ghost" size="sm" onClick={refresh} className="h-8 w-8 p-0"><RefreshCw className="h-4 w-4" /></Button>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={doExport}>
-            <Download className="mr-1.5 h-4 w-4" />Export Audit Log
-          </Button>
-        </div>
-      </div>
-
-      {/* VERIFIER AGENT STATUS — derived from real verification rate */}
-      <Card className="border-border/40">
-        <CardContent className="px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Verifier Agent Status</span>
-            <span className="text-xs font-mono text-muted-foreground">STATUS: <span className={cn("font-semibold", verifierColor)}>{verifierStatus}</span></span>
+    <div className="-m-6 -mt-4 bg-white">
+      {/* ═══ STATS HERO ═══ */}
+      <div className="bg-white border-b border-border">
+        <div className="px-10 py-12 max-w-[1600px] w-full mx-auto">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[11px] font-black uppercase tracking-tighter rounded flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active Session
+                </span>
+                <span className="text-muted-foreground text-sm font-medium">{clock}</span>
+              </div>
+              <h1 className="text-4xl lg:text-5xl font-extrabold text-foreground tracking-tight leading-[1.1]">
+                Chain of <span className="text-primary inline-block">Custody</span>
+              </h1>
+              <p className="text-sm text-muted-foreground max-w-xl">Evidence integrity verification — HMAC-SHA256 signing, Merkle tree anchoring, and tamper-proof audit trails.</p>
+            </div>
+            <div className="flex gap-3 shrink-0">
+              <div className="relative flex-1 max-w-xs">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search evidence IDs, batches..." className="pl-10 h-10 bg-white border-border rounded-2xl" value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+              <button onClick={refresh} className="flex items-center gap-2 px-5 py-2.5 bg-muted/50 border border-border rounded-2xl text-sm font-semibold hover:bg-accent transition-colors">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button onClick={doExport} className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+                <Download className="w-4 h-4" /> Export Audit Log
+              </button>
+            </div>
           </div>
-          <div className="flex items-center justify-between">
+
+          {/* Verifier Agent Status */}
+          <div className="flex items-center justify-between mb-10 py-4 px-6 rounded-2xl border border-border bg-white">
             <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600">
-                <Lock className="h-3 w-3" />HMAC-SHA256
+              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Verifier Agent</span>
+              <span className={cn("text-xs font-black uppercase", verifierColor)}>{verifierStatus}</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-600">
+                <Lock className="h-3 w-3" /> HMAC-SHA256
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-600">
-                <Fingerprint className="h-3 w-3" />MERKLE VERIFIED
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-blue-200 bg-blue-50 text-xs font-bold text-blue-600">
+                <Fingerprint className="h-3 w-3" /> MERKLE VERIFIED
               </span>
             </div>
             <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground">
-              <span>BATCHES: <span className="text-foreground">{summary ? formatNumber(summary.totalBatches) : "\u2014"}</span></span>
+              <span>BATCHES: <span className="text-foreground font-bold">{summary ? formatNumber(summary.totalBatches) : "\u2014"}</span></span>
               <span className="text-border">|</span>
-              <span>AVG_SIZE: <span className="text-foreground">{summary ? formatNumber(summary.avgBatchSize) : "\u2014"} events</span></span>
+              <span>AVG_SIZE: <span className="text-foreground font-bold">{summary ? formatNumber(summary.avgBatchSize) : "\u2014"}</span></span>
               <span className="text-border">|</span>
-              <span>RATE: <span className={cn("font-semibold", verifierColor)}>{summary ? summary.verificationRate.toFixed(1) + "%" : "\u2014"}</span></span>
+              <span>RATE: <span className={cn("font-bold", verifierColor)}>{summary ? summary.verificationRate.toFixed(1) + "%" : "\u2014"}</span></span>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* STAT CARDS */}
-      {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card><CardContent className="p-5">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Total Batches</p>
-            <p className="text-3xl font-bold text-foreground">{formatNumber(summary.totalBatches)}</p>
-            <p className="text-xs text-blue-500 font-medium mt-0.5">Active</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-5">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Total Anchored</p>
-            <p className="text-3xl font-bold text-foreground">{formatNumber(summary.totalAnchored)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Events</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-5">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Verification Rate</p>
-            <p className={cn("text-3xl font-bold font-mono", verifierColor)}>{summary.verificationRate.toFixed(1)}%</p>
-            <p className="text-xs text-emerald-500 font-medium mt-0.5">Certified</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-5">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Chain Length</p>
-            <p className="text-3xl font-bold text-foreground font-mono">{formatNumber(summary.chainLength)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Blocks</p>
-          </CardContent></Card>
-        </div>
-      )}
-
-      {/* SIDE-BY-SIDE: INVESTIGATIONS + LIVE BATCHES */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left: Evidence-Backed Investigations */}
-        <Card>
-          <div className="flex items-center justify-between px-5 pt-4 pb-2">
-            <p className="text-sm font-bold text-foreground">Evidence-Backed Investigations</p>
-            <Link href="/investigations" className="text-xs font-medium text-blue-500 hover:text-blue-400 transition-colors">View All Investigations</Link>
-          </div>
-          <CardContent className="px-5 pb-4 pt-0">
-            <div className="grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border/40 pb-2.5 mb-1">
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Investigation Name</span>
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-24">Event Count</span>
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right w-20">Integrity</span>
-            </div>
-            {fi.slice(0, 5).map(inv => (
-              <div key={inv.id} className="grid grid-cols-[1fr_auto_auto] gap-4 items-center py-3 border-b border-border/20 last:border-0">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{inv.title}</p>
-                  <p className="text-[11px] text-muted-foreground font-mono">{inv.id}</p>
-                </div>
-                <div className="text-center w-24">
-                  <span className="text-sm font-semibold text-foreground">{formatNumber(inv.eventCount)}</span>
-                  <span className="text-xs text-muted-foreground ml-1">events</span>
-                </div>
-                <div className="text-right w-20">
-                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">
-                    <CheckCircle className="h-2.5 w-2.5" />Verified
-                  </span>
+          {/* Stat Cards */}
+          {summary && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total Batches</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-4xl font-extrabold text-foreground">{formatNumber(summary.totalBatches)}</h3>
+                  <span className="text-blue-500 text-xs font-bold">Active</span>
                 </div>
               </div>
-            ))}
-            {fi.length === 0 && <div className="py-8 text-center text-sm text-muted-foreground">No investigations found</div>}
-          </CardContent>
-        </Card>
-
-        {/* Right: Live Evidence Batches — now shows eventCount, tableName, status from API */}
-        <Card>
-          <div className="flex items-center justify-between px-5 pt-4 pb-2">
-            <p className="text-sm font-bold text-foreground">Live Evidence Batches</p>
-            <p className="text-[10px] text-muted-foreground">Click a batch to expand details</p>
-          </div>
-          <CardContent className="px-5 pb-4 pt-0">
-            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 border-b border-border/40 pb-2.5 mb-1">
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Batch ID</span>
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-20">Events</span>
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-24">Timestamp</span>
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right w-16">Actions</span>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total Anchored</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-4xl font-extrabold text-foreground">{formatNumber(summary.totalAnchored)}</h3>
+                  <span className="text-muted-foreground text-xs font-bold">Events</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Verification Rate</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className={cn("text-4xl font-extrabold font-mono", verifierColor)}>{summary.verificationRate.toFixed(1)}%</h3>
+                  <span className="text-emerald-500 text-xs font-bold">Certified</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Chain Length</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-4xl font-extrabold text-foreground font-mono">{formatNumber(summary.chainLength)}</h3>
+                  <span className="text-muted-foreground text-xs font-bold">Blocks</span>
+                </div>
+              </div>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ 12-COL GRID ═══ */}
+      <div className="grid grid-cols-12">
+        {/* LEFT COLUMN — Investigations */}
+        <div className="col-span-12 xl:col-span-7 flex flex-col">
+          <section className="px-10 py-12 bg-white border-t border-border">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                  <Fingerprint className="w-5 h-5" />
+                </div>
+                <h3 className="text-2xl font-extrabold text-foreground">Evidence-Backed Investigations</h3>
+              </div>
+              <Link href="/investigations" className="text-[11px] font-black text-primary uppercase tracking-[0.2em] hover:underline">View All</Link>
+            </div>
+            <div className="bg-white rounded-[2.5rem] overflow-hidden border border-border shadow-sm">
+              <table className="w-full text-left">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Investigation Name</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] text-center">Event Count</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] text-right">Integrity</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {fi.slice(0, 5).map(inv => (
+                    <tr key={inv.id} className="hover:bg-muted/10 transition-colors">
+                      <td className="px-6 py-6">
+                        <p className="font-bold text-foreground">{inv.title}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono">{inv.id}</p>
+                      </td>
+                      <td className="px-6 py-6 text-center">
+                        <span className="font-mono font-bold text-foreground">{formatNumber(inv.eventCount)}</span>
+                        <span className="text-xs text-muted-foreground ml-1">events</span>
+                      </td>
+                      <td className="px-6 py-6 text-right">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black text-emerald-600 uppercase">
+                          <CheckCircle className="h-2.5 w-2.5" /> Verified
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {fi.length === 0 && (
+                    <tr><td colSpan={3} className="py-12 text-center text-sm text-muted-foreground">No investigations found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        {/* RIGHT COLUMN — Live Batches */}
+        <aside className="col-span-12 xl:col-span-5 bg-white border-l border-border/80 p-8 space-y-6">
+          <div className="flex items-center justify-between mb-2 px-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white shadow-sm text-primary rounded-xl flex items-center justify-center border border-border">
+                <Lock className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Live Evidence Batches</h3>
+            </div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Click to expand</p>
+          </div>
+
+          <div className="space-y-3">
             {fb.slice(0, 6).map(batch => {
               const { date, time } = fmtTs(batch.timestamp);
               const isExpanded = expandedBatch === batch.id;
               return (
-                <div key={batch.id} className="border-b border-border/20 last:border-0">
+                <div key={batch.id} className="bg-white rounded-2xl border border-border shadow-sm hover:border-primary/30 transition-all overflow-hidden">
                   <div
-                    className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center py-3 cursor-pointer hover:bg-muted/20 transition-colors rounded-md px-1 -mx-1"
+                    className="flex items-center gap-4 p-5 cursor-pointer"
                     onClick={() => setExpandedBatch(isExpanded ? null : batch.id)}
                   >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("transition-transform text-muted-foreground text-[10px]", isExpanded ? "rotate-90" : "")}>▶</span>
-                        <span className={cn("h-2 w-2 rounded-full flex-shrink-0", batch.status === "Verified" ? "bg-emerald-500" : "bg-blue-500")} />
-                        <span className="text-sm font-mono font-semibold text-foreground truncate">{batch.id}</span>
-                      </div>
-                      {batch.tableName && (
-                        <p className="text-[10px] text-muted-foreground font-mono ml-8 truncate">{batch.tableName}</p>
-                      )}
+                    <span className={cn("transition-transform text-muted-foreground text-[10px]", isExpanded ? "rotate-90" : "")}>▶</span>
+                    <span className={cn("h-2.5 w-2.5 rounded-full shrink-0", batch.status === "Verified" ? "bg-emerald-500" : "bg-blue-500")} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-mono font-bold text-foreground truncate">{batch.id}</p>
+                      {batch.tableName && <p className="text-[10px] text-muted-foreground font-mono truncate">{batch.tableName}</p>}
                     </div>
-                    <div className="text-center w-20">
-                      <span className="text-sm font-semibold text-foreground">{formatNumber(batch.eventCount)}</span>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-foreground">{formatNumber(batch.eventCount)}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{date} {time}</p>
                     </div>
-                    <div className="text-center w-24">
-                      <p className="text-xs text-muted-foreground font-mono">{date}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{time}</p>
-                    </div>
-                    <div className="text-right w-16" onClick={e => e.stopPropagation()}><VerifyButton batchId={batch.id} /></div>
+                    <div onClick={e => e.stopPropagation()}><VerifyButton batchId={batch.id} /></div>
                   </div>
                   {isExpanded && (
-                    <div className="ml-8 mr-2 mb-3 mt-1 rounded-lg border border-border/40 bg-muted/10 p-4 grid grid-cols-2 gap-4">
+                    <div className="mx-5 mb-5 mt-0 rounded-2xl border border-border bg-muted/10 p-5 grid grid-cols-2 gap-5">
                       <div>
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Merkle Root</p>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Merkle Root</p>
                         <p className="text-xs font-mono text-foreground break-all">{batch.merkleRoot || "N/A"}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Merkle Depth</p>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Merkle Depth</p>
                         <p className="text-xs font-mono text-foreground">{batch.merkleDepth ?? "N/A"}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Time Range</p>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Time Range</p>
                         <p className="text-xs font-mono text-foreground">{batch.timeFrom ? new Date(batch.timeFrom).toLocaleString() : "N/A"} — {batch.timeTo ? new Date(batch.timeTo).toLocaleString() : "N/A"}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">S3 Key</p>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">S3 Key</p>
                         <p className="text-xs font-mono text-foreground">{batch.s3Key || "N/A"}</p>
                       </div>
                     </div>
@@ -313,17 +337,19 @@ export default function EvidencePage() {
               );
             })}
             {fb.length === 0 && <div className="py-8 text-center text-sm text-muted-foreground">No evidence batches found</div>}
-          </CardContent>
-        </Card>
+          </div>
+        </aside>
       </div>
 
-      {/* FOOTER — uses real data where available */}
-      <div className="flex items-center justify-between pt-2 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
-        <div className="flex items-center gap-6">
-          <span>Last Updated: {clock || "\u2014"} UTC</span>
-          <span>System Integrity: <span className={cn(verifierColor)}>{summary && summary.verificationRate >= 95 ? "Hash-Match Verified" : summary ? "Partial \u2014 " + summary.verificationRate.toFixed(0) + "%" : "Unknown"}</span></span>
+      {/* FOOTER */}
+      <div className="px-10 py-6 border-t border-border bg-white">
+        <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center gap-6">
+            <span>Last Updated: {clock || "\u2014"} UTC</span>
+            <span>System Integrity: <span className={cn(verifierColor)}>{summary && summary.verificationRate >= 95 ? "Hash-Match Verified" : summary ? "Partial \u2014 " + summary.verificationRate.toFixed(0) + "%" : "Unknown"}</span></span>
+          </div>
+          <span className="text-primary">Chain of Custody Protocol v2.4.1</span>
         </div>
-        <span className="text-blue-500">Chain of Custody Protocol v2.4.1</span>
       </div>
     </div>
   );

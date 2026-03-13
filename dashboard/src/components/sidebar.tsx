@@ -19,7 +19,6 @@ import {
   Globe,
   Bot,
   Brain,
-  MessageSquare,
   Shield,
   FileText,
   Activity,
@@ -75,7 +74,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "AI Agents", href: "/ai-agents", icon: Bot },
       { label: "Explainability", href: "/explainability", icon: Brain },
-      { label: "CLIF AI Chat", href: "/chat", icon: MessageSquare },
     ],
   },
   {

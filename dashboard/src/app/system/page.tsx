@@ -17,10 +17,6 @@ import {
   ChevronRight,
   Fingerprint,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePolling } from "@/hooks/use-polling";
 import { formatNumber, cn } from "@/lib/utils";
@@ -117,7 +113,10 @@ export default function SystemPage() {
   ];
 
   const apiServices = (data?.services || []).map((s) => ({
-    ...s,
+    name: s.name,
+    latency: s.latency ?? 0,
+    uptime: s.uptime ?? "N/A",
+    version: s.version ?? "—",
     status: (s.status.toLowerCase() === "healthy" ? "healthy" : s.status.toLowerCase() === "degraded" ? "degraded" : "down") as "healthy" | "degraded" | "down",
   }));
 
@@ -159,302 +158,208 @@ export default function SystemPage() {
   const totalSourceEvents = topSources.reduce((s, src) => s + src.count, 0);
 
   return (
-    <div className="space-y-3">
-      {/* Alert Banner */}
-      {alertMessage && (
-        <div className="flex items-center justify-center gap-1.5 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-[11px] font-medium text-red-500 tracking-wide">{alertMessage}</span>
-        </div>
-      )}
+    <div className="-m-6 -mt-4 bg-white">
+      {/* ═══ HERO ═══ */}
+      <div className="bg-white border-b border-border">
+        <div className="px-10 py-12 max-w-[1600px] w-full mx-auto">
+          {/* Alert Banner */}
+          {alertMessage && (
+            <div className="flex items-center justify-center gap-2 rounded-2xl bg-red-50 border border-red-200 px-5 py-3 mb-8">
+              <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-xs font-bold text-red-600 tracking-wide">{alertMessage}</span>
+            </div>
+          )}
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-primary/10 text-primary text-[11px] font-black uppercase tracking-tighter rounded flex items-center gap-1.5">
+                  <Server className="w-3 h-3" /> Infrastructure
+                </span>
+                <span className="text-muted-foreground text-sm font-medium">Real-time Monitoring</span>
+              </div>
+              <h1 className="text-4xl lg:text-5xl font-extrabold text-foreground tracking-tight leading-[1.1]">
+                System <span className="text-primary inline-block">Health</span>
+              </h1>
+              <p className="text-sm text-muted-foreground max-w-xl">Infrastructure status, resource utilization, and data pipeline health across the CLIF platform.</p>
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                <span>Last updated: {lastUpdated}</span>
+              </div>
+              <button onClick={refresh} className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+                <RefreshCw className="w-4 h-4" /> Refresh
+              </button>
+            </div>
+          </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-0.5">
-            <span>Infrastructure</span>
-            <ChevronRight className="h-3 w-3" />
-            <span className="text-blue-400">Health Dashboard</span>
+          {/* 4 Big Stats */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { label: "Events / Sec", value: formatNumber(metrics.eventsPerSecond), icon: Activity, change: "+1.2%", positive: true },
+              { label: "Avg Query Latency", value: `${metrics.avgQueryLatency}ms`, icon: Clock, change: "+0.5%", positive: false },
+              { label: "Active Connections", value: String(metrics.activeConnections), icon: Wifi, change: "Stable", positive: true },
+              { label: "Queue Depth", value: formatNumber(metrics.queueDepth), icon: Database, change: "-12%", positive: false },
+            ].map((stat) => (
+              <div key={stat.label}>
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">{stat.label}</p>
+                <p className="text-3xl font-extrabold text-foreground tracking-tight">{stat.value}</p>
+                <p className={cn("text-[10px] font-bold mt-1", stat.positive ? "text-emerald-500" : stat.change === "Stable" ? "text-muted-foreground" : "text-red-500")}>{stat.change}</p>
+              </div>
+            ))}
           </div>
-          <h2 className="text-xl font-bold text-foreground">System Health Overview</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock className="h-3.5 w-3.5" />
-            <span>Last updated: {lastUpdated}</span>
-          </div>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={refresh}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh
-          </Button>
         </div>
       </div>
 
-      {/* 4 Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Events / Sec</span>
-              <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-foreground">{formatNumber(metrics.eventsPerSecond)}</span>
-              <span className="text-[10px] font-semibold text-emerald-500 flex items-center">
-                <svg className="h-2.5 w-2.5 mr-0.5" viewBox="0 0 12 12" fill="none"><path d="M6 2L10 7H2L6 2Z" fill="currentColor" /></svg>
-                1.2%
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Avg Query Latency</span>
-              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-foreground">{metrics.avgQueryLatency}<span className="text-base">ms</span></span>
-              <span className="text-[10px] font-semibold text-red-500 flex items-center">
-                <svg className="h-2.5 w-2.5 mr-0.5" viewBox="0 0 12 12" fill="none"><path d="M6 2L10 7H2L6 2Z" fill="currentColor" /></svg>
-                0.5%
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Active Connections</span>
-              <Wifi className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-foreground">{metrics.activeConnections}</span>
-              <span className="text-[10px] font-semibold text-muted-foreground">Stable</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Queue Depth</span>
-              <Database className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-foreground">{formatNumber(metrics.queueDepth)}</span>
-              <span className="text-[10px] font-semibold text-red-500 flex items-center">
-                <svg className="h-2.5 w-2.5 mr-0.5 rotate-180" viewBox="0 0 12 12" fill="none"><path d="M6 2L10 7H2L6 2Z" fill="currentColor" /></svg>
-                12%
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* ═══ 12-COL GRID ═══ */}
+      <div className="grid grid-cols-12 max-w-[1600px] w-full mx-auto">
 
-      {/* Chart + Right sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* System Performance Trends */}
-        <Card className="lg:col-span-2 flex flex-col">
-          <div className="px-4 pt-3 pb-1 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              System Performance Trends (30m)
-            </span>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <span className="text-[9px] text-muted-foreground uppercase">Throughput</span>
+        {/* LEFT COLUMN */}
+        <div className="col-span-12 xl:col-span-8 flex flex-col">
+
+          {/* System Performance Trends */}
+          <section className="px-10 py-10 bg-white border-b border-border">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Performance Trends</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">30-minute rolling window</p>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="h-2 w-2 rounded-full bg-cyan-400" />
-                <span className="text-[9px] text-muted-foreground uppercase">Latency</span>
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500" /><span className="text-[9px] font-black text-muted-foreground uppercase">CPU</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /><span className="text-[9px] font-black text-muted-foreground uppercase">Memory</span></span>
               </div>
             </div>
-          </div>
-          <div className="px-2 pb-2 flex-1">
-            <div className="h-full">
+            <div className="h-[300px] bg-white rounded-[2.5rem] border border-border p-6 shadow-sm">
               <ResponsiveContainer>
                 <AreaChart data={history}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.2} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.3} />
                   <XAxis dataKey="time" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }} />
                   <Area type="monotone" dataKey="cpu" stroke="#06b6d4" fill="rgba(6,182,212,0.15)" strokeWidth={1.5} name="CPU %" />
                   <Area type="monotone" dataKey="memory" stroke="#8b5cf6" fill="rgba(139,92,246,0.15)" strokeWidth={1.5} name="Memory %" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </div>
-        </Card>
+          </section>
 
-        {/* Right column */}
-        <div className="flex flex-col gap-3">
-          {/* Resource Usage */}
-          <Card>
-            <div className="px-4 pt-3 pb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Resource Usage</span>
-            </div>
-            <div className="px-4 pb-3 space-y-2.5">
-              {[
-                { label: "CPU Usage", value: resources.cpuPercent, warn: 60, crit: 80 },
-                { label: "Memory", value: resources.memoryPercent, warn: 70, crit: 85 },
-                { label: "Disk I/O", value: resources.diskPercent, warn: 75, crit: 90 },
-              ].map((r) => (
-                <div key={r.label} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-foreground">{r.label}</span>
-                    <span className={cn("text-xs font-semibold", r.value > r.crit ? "text-red-500" : r.value > r.warn ? "text-amber-500" : "text-foreground")}>{r.value}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
-                    <div className={cn("h-full rounded-full transition-all duration-500", r.value > r.crit ? "bg-red-500" : r.value > r.warn ? "bg-amber-500" : "bg-blue-500")} style={{ width: `${r.value}%` }} />
-                  </div>
+          {/* Data Store Health */}
+          <section className="px-10 py-10 bg-white border-b border-border">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-50 text-blue-500 rounded-2xl">
+                  <Database className="w-5 h-5" />
                 </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* AI Pipeline Agents — MOVED UP */}
-          <Card className="flex-1">
-            <div className="px-4 pt-3 pb-1 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">AI Pipeline Agents</span>
-              <Link href="/ai-agents">
-                <Button variant="ghost" size="sm" className="h-6 text-[10px] text-blue-400 hover:text-blue-300 px-1.5">View <ChevronRight className="ml-0.5 h-3 w-3" /></Button>
-              </Link>
-            </div>
-            <div className="px-4 pb-3 space-y-2">
-              {[
-                { name: "Triage Agent", icon: Crosshair, iconBg: "bg-amber-500/10", iconColor: "text-amber-400", status: "Healthy", statusColor: "bg-emerald-500", textColor: "text-emerald-500", metric: "124", unit: "ms", sub: "98.2% acc" },
-                { name: "Hunter Agent", icon: SearchIcon, iconBg: "bg-cyan-500/10", iconColor: "text-cyan-400", status: "Running", statusColor: "bg-emerald-500", textColor: "text-emerald-500", metric: "1.2", unit: "k/m", sub: "99.1% success" },
-                { name: "Verifier Agent", icon: ShieldCheck, iconBg: "bg-red-500/10", iconColor: "text-red-400", status: "High Latency", statusColor: "bg-orange-500", textColor: "text-orange-500", metric: "459", unit: "ms", sub: "42 queued" },
-              ].map((agent) => (
-                <div key={agent.name} className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("h-6 w-6 rounded flex items-center justify-center", agent.iconBg)}>
-                      <agent.icon className={cn("h-3 w-3", agent.iconColor)} />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold text-foreground">{agent.name}</p>
-                      <div className="flex items-center gap-1">
-                        <span className={cn("h-1.5 w-1.5 rounded-full", agent.statusColor)} />
-                        <span className={cn("text-[8px] font-semibold uppercase", agent.textColor)}>{agent.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-foreground">{agent.metric}<span className="text-[9px] text-muted-foreground">{agent.unit}</span></p>
-                    <p className="text-[8px] text-muted-foreground">{agent.sub}</p>
-                  </div>
+                <div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Data Store Health</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">ClickHouse table metrics</p>
                 </div>
-              ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Total Indexed:</span>
+                <span className="text-sm font-extrabold text-foreground">{totalTableRows > 0 ? formatNumber(totalTableRows) : "—"}</span>
+              </div>
             </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* ═══ DATA INGESTION HEALTH — from /api/metrics ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-
-        {/* ── Data Store Health (ClickHouse tables) ── */}
-        <Card>
-          <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Database className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Data Store Health</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-muted-foreground">Total Indexed:</span>
-              <span className="text-[11px] font-bold text-foreground">{totalTableRows > 0 ? formatNumber(totalTableRows) : "—"}</span>
-            </div>
-          </div>
-          <CardContent className="px-4 pb-3 pt-0 space-y-2.5">
-            {/* Per-table row counts with descriptions */}
-            {Object.entries(tableCounts).length > 0 ? (
-              Object.entries(tableCounts).sort(([, a], [, b]) => b - a).map(([table, count]) => {
-                const pct = totalTableRows > 0 ? (count / totalTableRows) * 100 : 0;
-                const info = TABLE_INFO[table] || { desc: "Pipeline data table", color: "bg-blue-500" };
-                return (
-                  <div key={table} className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("h-2 w-2 rounded-full flex-shrink-0", info.color)} />
-                        <span className="text-[11px] font-mono font-semibold text-foreground">{table}</span>
+            <div className="space-y-5">
+              {Object.entries(tableCounts).length > 0 ? (
+                Object.entries(tableCounts).sort(([, a], [, b]) => b - a).map(([table, count]) => {
+                  const pct = totalTableRows > 0 ? (count / totalTableRows) * 100 : 0;
+                  const info = TABLE_INFO[table] || { desc: "Pipeline data table", color: "bg-blue-500" };
+                  return (
+                    <div key={table} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <span className={cn("h-2.5 w-2.5 rounded-full flex-shrink-0", info.color)} />
+                          <span className="text-xs font-mono font-bold text-foreground">{table}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-bold text-muted-foreground">{pct.toFixed(0)}%</span>
+                          <span className="text-xs font-extrabold text-foreground w-12 text-right">{formatNumber(count)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground">{pct.toFixed(0)}%</span>
-                        <span className="text-[11px] font-bold text-foreground w-10 text-right">{formatNumber(count)}</span>
+                      <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+                        <div className={cn("h-full rounded-full transition-all duration-500 opacity-70", info.color)} style={{ width: `${pct}%` }} />
                       </div>
+                      <p className="text-[9px] text-muted-foreground leading-tight pl-5">{info.desc}</p>
                     </div>
-                    <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
-                      <div className={cn("h-full rounded-full transition-all duration-500", info.color, "opacity-70")} style={{ width: `${pct}%` }} />
-                    </div>
-                    <p className="text-[9px] text-muted-foreground leading-tight pl-4">{info.desc}</p>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-xs text-muted-foreground py-4 text-center">Loading table data...</div>
-            )}
+                  );
+                })
+              ) : (
+                <div className="text-xs text-muted-foreground py-8 text-center">Loading table data...</div>
+              )}
+            </div>
 
             {/* Evidence Pipeline */}
-            <Separator className="opacity-30" />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Fingerprint className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Evidence Pipeline</span>
+            <div className="mt-8 pt-6 border-t border-border/50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <Fingerprint className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Evidence Pipeline</span>
+                </div>
+                <Link href="/evidence" className="text-[10px] font-black text-primary uppercase tracking-[0.15em] hover:underline flex items-center gap-1">
+                  View <ChevronRight className="w-3 h-3" />
+                </Link>
               </div>
-              <Link href="/evidence">
-                <Button variant="ghost" size="sm" className="h-5 text-[9px] text-blue-400 hover:text-blue-300 px-1">View <ChevronRight className="ml-0.5 h-2.5 w-2.5" /></Button>
-              </Link>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-border bg-white p-5 text-center shadow-sm">
+                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Batches</p>
+                  <p className="text-2xl font-extrabold text-foreground">{formatNumber(metricsData?.evidenceBatches || 0)}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">Merkle-anchored</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-white p-5 text-center shadow-sm">
+                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Anchored Events</p>
+                  <p className="text-2xl font-extrabold text-foreground">{formatNumber(metricsData?.evidenceAnchored || 0)}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">SHA-256 verified</p>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-md border border-border/40 bg-muted/5 p-2.5 text-center">
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Batches</p>
-                <p className="text-xl font-bold text-foreground">{formatNumber(metricsData?.evidenceBatches || 0)}</p>
-                <p className="text-[8px] text-muted-foreground mt-0.5">Merkle-anchored</p>
-              </div>
-              <div className="rounded-md border border-border/40 bg-muted/5 p-2.5 text-center">
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Anchored Events</p>
-                <p className="text-xl font-bold text-foreground">{formatNumber(metricsData?.evidenceAnchored || 0)}</p>
-                <p className="text-[8px] text-muted-foreground mt-0.5">SHA-256 verified</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* ── Top Data Sources (log sources feeding the pipeline) ── */}
-        <Card>
-          <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Top Data Sources</span>
+          {/* Top Data Sources */}
+          <section className="px-10 py-10 bg-white border-b border-border">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-cyan-50 text-cyan-600 rounded-2xl">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Top Data Sources</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Log source ingestion breakdown</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Total Events:</span>
+                <span className="text-sm font-extrabold text-foreground">{totalSourceEvents > 0 ? formatNumber(totalSourceEvents) : "—"}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-muted-foreground">Total Events:</span>
-              <span className="text-[11px] font-bold text-foreground">{totalSourceEvents > 0 ? formatNumber(totalSourceEvents) : "—"}</span>
-            </div>
-          </div>
-          <CardContent className="px-4 pb-3 pt-0">
             {topSources.length > 0 ? (
-              <div className="space-y-2.5">
+              <div className="space-y-5">
                 {topSources.map((src, idx) => {
                   const maxCount = topSources[0]?.count || 1;
                   const pct = (src.count / maxCount) * 100;
                   const desc = SOURCE_INFO[src.source] || "Security data connector";
                   const colors = ["bg-blue-500", "bg-cyan-500", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
                   return (
-                    <div key={src.source} className="space-y-1">
+                    <div key={src.source} className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={cn("h-2 w-2 rounded-full flex-shrink-0", colors[idx % colors.length])} />
-                          <span className="text-[11px] font-mono font-semibold text-foreground">{src.source}</span>
+                        <div className="flex items-center gap-2.5">
+                          <span className={cn("h-2.5 w-2.5 rounded-full flex-shrink-0", colors[idx % colors.length])} />
+                          <span className="text-xs font-mono font-bold text-foreground">{src.source}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-muted-foreground">{totalSourceEvents > 0 ? ((src.count / totalSourceEvents) * 100).toFixed(0) : 0}%</span>
-                          <span className="text-[11px] font-bold text-foreground w-10 text-right">{formatNumber(src.count)}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-bold text-muted-foreground">{totalSourceEvents > 0 ? ((src.count / totalSourceEvents) * 100).toFixed(0) : 0}%</span>
+                          <span className="text-xs font-extrabold text-foreground w-12 text-right">{formatNumber(src.count)}</span>
                         </div>
                       </div>
-                      <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                      <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
                         <div className={cn("h-full rounded-full transition-all duration-500 opacity-70", colors[idx % colors.length])} style={{ width: `${pct}%` }} />
                       </div>
-                      <p className="text-[9px] text-muted-foreground leading-tight pl-4">{desc}</p>
+                      <p className="text-[9px] text-muted-foreground leading-tight pl-5">{desc}</p>
                     </div>
                   );
                 })}
@@ -464,73 +369,177 @@ export default function SystemPage() {
             )}
 
             {/* Ingestion rate summary */}
-            <Separator className="opacity-30 mt-3 mb-2" />
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-md border border-border/40 bg-muted/5 p-2.5 text-center">
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Ingestion Rate</p>
-                <p className="text-xl font-bold text-foreground">{formatNumber(metricsData?.ingestRate || 0)}</p>
-                <p className="text-[8px] text-muted-foreground mt-0.5">events/sec</p>
-              </div>
-              <div className="rounded-md border border-border/40 bg-muted/5 p-2.5 text-center">
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Total Events</p>
-                <p className="text-xl font-bold text-foreground">{formatNumber(metricsData?.totalEvents || 0)}</p>
-                <p className="text-[8px] text-muted-foreground mt-0.5">across all tables</p>
+            <div className="mt-8 pt-6 border-t border-border/50">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-border bg-white p-5 text-center shadow-sm">
+                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Ingestion Rate</p>
+                  <p className="text-2xl font-extrabold text-foreground">{formatNumber(metricsData?.ingestRate || 0)}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">events/sec</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-white p-5 text-center shadow-sm">
+                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Total Events</p>
+                  <p className="text-2xl font-extrabold text-foreground">{formatNumber(metricsData?.totalEvents || 0)}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">across all tables</p>
+                </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </section>
 
-      {/* ═══ SERVICE STATUS — full-width table (MOVED DOWN) ═══ */}
-      <Card>
-        <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Service Status</span>
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {healthyCount} healthy</span>
-            {degradedServices.length > 0 && <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> {degradedServices.length} degraded</span>}
-            {downServices.length > 0 && <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> {downServices.length} down</span>}
-          </div>
-        </div>
-        <CardContent className="px-4 pb-3 pt-0">
-          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 border-b border-border/40 pb-2 mb-1">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Service</span>
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-20">Status</span>
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-16">Latency</span>
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-16">Uptime</span>
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center w-14">Version</span>
-          </div>
-          {services.map((svc) => {
-            const badgeClass = svc.status === "healthy"
-              ? "text-emerald-500 bg-emerald-500/10 border-emerald-500/20"
-              : svc.status === "degraded"
-                ? "text-amber-500 bg-amber-500/10 border-amber-500/20"
-                : "text-red-500 bg-red-500/10 border-red-500/20";
-            const badgeLabel = svc.status === "healthy" ? "HEALTHY" : svc.status === "degraded" ? "DEGRADED" : "DOWN";
-            return (
-              <div key={svc.name + (svc.version || "")} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center py-1.5 border-b border-border/10 last:border-0">
-                <div className="flex items-center gap-2">
-                  <Server className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-[11px] font-semibold text-foreground">{svc.name}</span>
+          {/* Service Status Table */}
+          <section className="px-10 py-10 bg-white">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                  <Server className="w-5 h-5" />
                 </div>
-                <div className="text-center w-20">
-                  <Badge variant="outline" className={cn("text-[8px] font-semibold uppercase tracking-wider border px-1.5 py-0", badgeClass)}>
-                    {badgeLabel}
-                  </Badge>
-                </div>
-                <div className="text-center w-16">
-                  <span className="text-[11px] font-mono text-foreground">{svc.latency ? `${svc.latency}ms` : "—"}</span>
-                </div>
-                <div className="text-center w-16">
-                  <span className="text-[11px] font-mono text-foreground">{svc.uptime || "—"}</span>
-                </div>
-                <div className="text-center w-14">
-                  <span className="text-[10px] font-mono text-muted-foreground">{svc.version || "—"}</span>
+                <div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Service Status</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">All CLIF platform services</p>
                 </div>
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              <div className="flex items-center gap-4 text-[10px] font-bold">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {healthyCount} healthy</span>
+                {degradedServices.length > 0 && <span className="flex items-center gap-1.5 text-amber-500"><span className="h-2 w-2 rounded-full bg-amber-500" /> {degradedServices.length} degraded</span>}
+                {downServices.length > 0 && <span className="flex items-center gap-1.5 text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" /> {downServices.length} down</span>}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-border overflow-hidden shadow-sm">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-6 py-3 bg-muted/20 border-b border-border">
+                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Service</span>
+                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest text-center w-20">Status</span>
+                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest text-center w-16">Latency</span>
+                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest text-center w-16">Uptime</span>
+                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest text-center w-14">Version</span>
+              </div>
+              {services.map((svc) => {
+                const badgeClass = svc.status === "healthy"
+                  ? "text-emerald-600 bg-emerald-50"
+                  : svc.status === "degraded"
+                    ? "text-amber-600 bg-amber-50"
+                    : "text-red-600 bg-red-50";
+                const badgeLabel = svc.status === "healthy" ? "HEALTHY" : svc.status === "degraded" ? "DEGRADED" : "DOWN";
+                return (
+                  <div key={svc.name + (svc.version || "")} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-6 py-3.5 border-b border-border/30 last:border-0">
+                    <div className="flex items-center gap-2.5">
+                      <Server className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs font-bold text-foreground">{svc.name}</span>
+                    </div>
+                    <div className="text-center w-20">
+                      <span className={cn("text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg", badgeClass)}>
+                        {badgeLabel}
+                      </span>
+                    </div>
+                    <div className="text-center w-16">
+                      <span className="text-xs font-mono font-bold text-foreground">{svc.latency ? `${svc.latency}ms` : "—"}</span>
+                    </div>
+                    <div className="text-center w-16">
+                      <span className="text-xs font-mono font-bold text-foreground">{svc.uptime || "—"}</span>
+                    </div>
+                    <div className="text-center w-14">
+                      <span className="text-[10px] font-mono text-muted-foreground">{svc.version || "—"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+
+        {/* RIGHT SIDEBAR */}
+        <aside className="col-span-12 xl:col-span-4 bg-white border-l border-border/80 p-8 space-y-10">
+
+          {/* Resource Usage */}
+          <section>
+            <div className="flex items-center gap-3 mb-5 px-2">
+              <div className="w-10 h-10 bg-violet-50 text-violet-500 rounded-xl flex items-center justify-center">
+                <Activity className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Resource Usage</h3>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-border shadow-sm space-y-5">
+              {[
+                { label: "CPU Usage", value: resources.cpuPercent, warn: 60, crit: 80 },
+                { label: "Memory", value: resources.memoryPercent, warn: 70, crit: 85 },
+                { label: "Disk I/O", value: resources.diskPercent, warn: 75, crit: 90 },
+              ].map((r) => (
+                <div key={r.label} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground">{r.label}</span>
+                    <span className={cn("text-xs font-extrabold", r.value > r.crit ? "text-red-500" : r.value > r.warn ? "text-amber-500" : "text-foreground")}>{r.value}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-muted/30 overflow-hidden">
+                    <div className={cn("h-full rounded-full transition-all duration-500", r.value > r.crit ? "bg-red-500" : r.value > r.warn ? "bg-amber-500" : "bg-blue-500")} style={{ width: `${r.value}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* AI Pipeline Agents */}
+          <section>
+            <div className="flex items-center justify-between mb-5 px-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-extrabold text-foreground">AI Pipeline</h3>
+              </div>
+              <Link href="/ai-agents" className="text-[10px] font-black text-primary uppercase tracking-[0.15em] hover:underline">View</Link>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-border shadow-sm space-y-4">
+              {[
+                { name: "Triage Agent", icon: Crosshair, iconBg: "bg-amber-50", iconColor: "text-amber-500", status: "Healthy", statusColor: "bg-emerald-500", textColor: "text-emerald-600", metric: "124", unit: "ms", sub: "98.2% acc" },
+                { name: "Hunter Agent", icon: SearchIcon, iconBg: "bg-cyan-50", iconColor: "text-cyan-600", status: "Running", statusColor: "bg-emerald-500", textColor: "text-emerald-600", metric: "1.2", unit: "k/m", sub: "99.1% success" },
+                { name: "Verifier Agent", icon: ShieldCheck, iconBg: "bg-emerald-50", iconColor: "text-emerald-600", status: "High Latency", statusColor: "bg-orange-500", textColor: "text-orange-600", metric: "459", unit: "ms", sub: "42 queued" },
+              ].map((agent) => (
+                <div key={agent.name} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className={cn("h-8 w-8 rounded-xl flex items-center justify-center", agent.iconBg)}>
+                      <agent.icon className={cn("h-4 w-4", agent.iconColor)} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">{agent.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", agent.statusColor)} />
+                        <span className={cn("text-[9px] font-black uppercase", agent.textColor)}>{agent.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-extrabold text-foreground">{agent.metric}<span className="text-[9px] text-muted-foreground ml-0.5">{agent.unit}</span></p>
+                    <p className="text-[9px] font-bold text-muted-foreground">{agent.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Quick Health Summary */}
+          <section>
+            <div className="flex items-center gap-3 mb-5 px-2">
+              <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                <CheckCircle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Health Summary</h3>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-border shadow-sm space-y-3.5">
+              {[
+                { label: "Services Online", value: `${healthyCount}/${services.length}`, color: healthyCount === services.length ? "text-emerald-500" : "text-amber-500" },
+                { label: "Uptime (avg)", value: "99.96%", color: "text-emerald-500" },
+                { label: "Pipeline Status", value: "Operational", color: "text-emerald-500" },
+                { label: "Last Incident", value: "14 days ago", color: "text-foreground" },
+                { label: "Data Retention", value: "90 days", color: "text-foreground" },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{row.label}</span>
+                  <span className={cn("text-xs font-bold text-right", row.color)}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+        </aside>
+      </div>
     </div>
   );
 }

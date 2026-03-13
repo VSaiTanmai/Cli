@@ -292,7 +292,7 @@ export async function GET(request: Request) {
           status: b.status,
           hasContinuity: b.prev_merkle_root !== "" || b.merkle_root !== "",
           merkleRoot: b.merkle_root ?? "",
-          anchoredAt: b.anchored_at ?? "",
+          anchoredAt: "",
         })),
         // Investigation data
         investigations: invRows.map((r) => ({

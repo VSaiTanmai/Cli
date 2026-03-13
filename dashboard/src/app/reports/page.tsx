@@ -33,10 +33,6 @@ import {
   Link2,
   Bell,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePolling } from "@/hooks/use-polling";
@@ -197,7 +193,7 @@ function FilterSelect({ value, onChange, options, label }: { value: string; onCh
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label={label}
-      className="h-9 rounded-md border border-border/40 bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      className="h-9 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
@@ -295,44 +291,54 @@ export default function ReportsPage() {
   });
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">
-            Security Reports
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Manage, generate and export technical security documentation.
-          </p>
+    <div className="-m-6 -mt-4 bg-white">
+      {/* ═══ HEADER HERO ═══ */}
+      <div className="bg-white border-b border-border">
+        <div className="px-10 py-12 max-w-[1600px] w-full mx-auto">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-primary/10 text-primary text-[11px] font-black uppercase tracking-tighter rounded flex items-center gap-1.5">
+                  <FileText className="w-3 h-3" /> Reports
+                </span>
+              </div>
+              <h1 className="text-4xl lg:text-5xl font-extrabold text-foreground tracking-tight leading-[1.1]">
+                Security <span className="text-primary inline-block">Reports</span>
+              </h1>
+              <p className="text-sm text-muted-foreground max-w-xl">Manage, generate and export technical security documentation.</p>
+            </div>
+            <div className="flex gap-3 shrink-0">
+              <button onClick={() => {
+                const invs = filteredReportInvestigations;
+                downloadCSV("investigations_report.csv",
+                  ["Investigation", "Title", "Verdict", "Score", "Signals"],
+                  invs.map((inv) => [inv.alertId, inv.title ?? "", inv.findingType, String(Math.round(inv.hunterScore * 100)) + "%", String(inv.signalsFired)])
+                );
+              }} className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+                <Download className="w-4 h-4" /> Export CSV
+              </button>
+            </div>
+          </div>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => {
-          const invs = filteredReportInvestigations;
-          downloadCSV("investigations_report.csv",
-            ["Investigation", "Title", "Verdict", "Score", "Signals"],
-            invs.map((inv) => [inv.alertId, inv.title ?? "", inv.findingType, String(Math.round(inv.hunterScore * 100)) + "%", String(inv.signalsFired)])
-          );
-        }}>
-          <Download className="mr-1.5 h-4 w-4" /> Export CSV
-        </Button>
       </div>
 
       {/* Tab Navigation */}
+      <div className="px-10 max-w-[1600px] w-full mx-auto">
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full justify-start border-b border-border/40 bg-transparent p-0">
-          <TabsTrigger value="reports" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-2.5">
+        <TabsList className="w-full justify-start border-b border-border bg-transparent p-0 mt-0">
+          <TabsTrigger value="reports" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 text-sm font-bold">
             Reports
           </TabsTrigger>
-          <TabsTrigger value="investigations" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-2.5">
+          <TabsTrigger value="investigations" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 text-sm font-bold">
             Investigations
           </TabsTrigger>
-          <TabsTrigger value="sigma" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-2.5">
+          <TabsTrigger value="sigma" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 text-sm font-bold">
             Sigma Rules
           </TabsTrigger>
-          <TabsTrigger value="ml" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-2.5">
+          <TabsTrigger value="ml" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 text-sm font-bold">
             Machine Learning Model
           </TabsTrigger>
-          <TabsTrigger value="evidence" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-2.5">
+          <TabsTrigger value="evidence" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-6 py-3 text-sm font-bold">
             Evidence Chain
           </TabsTrigger>
         </TabsList>
@@ -342,22 +348,20 @@ export default function ReportsPage() {
           {/* Report Templates */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h4 className="text-base font-semibold text-foreground">Download Investigation Templates</h4>
-              <button className="text-sm text-blue-400 hover:text-blue-300 transition-colors">View All Templates</button>
+              <h4 className="text-base font-extrabold text-foreground">Download Investigation Templates</h4>
+              <button className="text-sm text-primary font-bold hover:underline transition-colors">View All Templates</button>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {REPORT_TEMPLATES.map((t) => (
-                <Card key={t.id} className="hover:border-primary/40 transition-colors cursor-pointer overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className={cn("flex items-center justify-center py-5", t.bg)}>
-                      <t.icon className={cn("h-8 w-8", t.iconColor)} />
-                    </div>
-                    <div className="p-3 text-center">
-                      <span className="text-sm font-medium text-foreground block">{t.name}</span>
-                      <span className="text-xs text-muted-foreground leading-tight block mt-1">{t.description}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div key={t.id} className="rounded-2xl border border-border hover:border-primary/40 transition-colors cursor-pointer overflow-hidden shadow-sm">
+                  <div className={cn("flex items-center justify-center py-5", t.bg)}>
+                    <t.icon className={cn("h-8 w-8", t.iconColor)} />
+                  </div>
+                  <div className="p-3 text-center">
+                    <span className="text-sm font-bold text-foreground block">{t.name}</span>
+                    <span className="text-xs text-muted-foreground leading-tight block mt-1">{t.description}</span>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -367,11 +371,11 @@ export default function ReportsPage() {
             <Filter className="h-4 w-4 text-muted-foreground" />
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
+              <input
                 placeholder="Search investigation ID..."
                 value={rptSearch}
                 onChange={(e) => setRptSearch(e.target.value)}
-                className="pl-9 h-9 w-[200px]"
+                className="pl-9 h-9 w-[200px] rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
             <FilterSelect
@@ -384,22 +388,20 @@ export default function ReportsPage() {
               ]}
             />
             {(rptSearch || rptVerdict !== "all") && (
-              <Button variant="ghost" size="sm" onClick={() => { setRptSearch(""); setRptVerdict("all"); }}>
-                <X className="mr-1 h-3 w-3" /> Clear
-              </Button>
+              <button className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors" onClick={() => { setRptSearch(""); setRptVerdict("all"); }}>
+                <X className="h-3 w-3" /> Clear
+              </button>
             )}
             <span className="text-xs text-muted-foreground ml-auto">{filteredReportInvestigations.length} investigation(s)</span>
           </div>
 
           {/* Per-Investigation Report Generation */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">
-                Generate Report by Investigation
-              </CardTitle>
-              <CardDescription>Select an investigation to generate a downloadable report</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
+          <div className="rounded-2xl border border-border overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-border">
+              <h4 className="text-base font-extrabold text-foreground">Generate Report by Investigation</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">Select an investigation to generate a downloadable report</p>
+            </div>
+            <div>
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed">
                   <colgroup>
@@ -493,36 +495,31 @@ export default function ReportsPage() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Report History */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-semibold">
-                    Report History
-                  </CardTitle>
-                  <CardDescription>Previously generated reports</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FilterSelect
-                    label="Template filter"
-                    value={rptHistoryTemplate}
-                    onChange={setRptHistoryTemplate}
-                    options={[
-                      { value: "all", label: "All Templates" },
-                      ...REPORT_TEMPLATES.map((t) => ({ value: t.name, label: t.name })),
-                    ]}
-                  />
-                  <Button variant="outline" size="sm">
-                    <Filter className="mr-1 h-3 w-3" /> Filter
-                  </Button>
-                </div>
+          <div className="rounded-2xl border border-border overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <div>
+                <h4 className="text-base font-extrabold text-foreground">Report History</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">Previously generated reports</p>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
+              <div className="flex items-center gap-2">
+                <FilterSelect
+                  label="Template filter"
+                  value={rptHistoryTemplate}
+                  onChange={setRptHistoryTemplate}
+                  options={[
+                    { value: "all", label: "All Templates" },
+                    ...REPORT_TEMPLATES.map((t) => ({ value: t.name, label: t.name })),
+                  ]}
+                />
+                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-muted-foreground border border-border rounded-xl hover:bg-accent transition-colors">
+                  <Filter className="h-3 w-3" /> Filter
+                </button>
+              </div>
+            </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -546,7 +543,7 @@ export default function ReportsPage() {
                           <span className="text-sm text-foreground">{r.title}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline" className="text-xs">{r.template}</Badge>
+                          <span className="text-xs font-bold text-foreground border border-border rounded-lg px-2.5 py-0.5">{r.template}</span>
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-muted-foreground">{new Date(r.created).toLocaleDateString()}</span>
@@ -615,8 +612,7 @@ export default function ReportsPage() {
                   </div>
                 );
               })()}
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
 
         {/* ═══════════════ INVESTIGATIONS TAB ═══════════════ */}
@@ -637,10 +633,10 @@ export default function ReportsPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm" className="gap-1.5">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl hover:bg-accent transition-colors">
                 <Settings className="h-4 w-4" /> View Settings
-              </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => {
+              </button>
+              <button className="inline-flex items-center px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors" onClick={() => {
                 downloadCSV("investigations_summary.csv",
                   ["Investigation ID", "Verdict", "Score", "Signals", "Affected Hosts", "Campaign"],
                   filteredInvestigations.map((inv) => {
@@ -650,20 +646,20 @@ export default function ReportsPage() {
                 );
               }}>
                 <Download className="mr-1.5 h-4 w-4" /> Export CSV
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Search + Filters */}
-          <Card className="p-4">
+          <div className="rounded-2xl border border-border p-4">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative flex-1 min-w-[250px]">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
+                <input
                   placeholder="Search Investigation ID, Signals, or Campaign..."
                   value={invSearch}
                   onChange={(e) => { setInvSearch(e.target.value); setInvPage(1); }}
-                  className="pl-10 h-9"
+                  className="w-full pl-10 h-9 rounded-xl border border-border bg-white text-sm font-semibold placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filters</span>
@@ -689,11 +685,11 @@ export default function ReportsPage() {
                 </button>
               )}
             </div>
-          </Card>
+          </div>
 
           {/* Investigation Table */}
-          <Card>
-            <CardContent className="p-0">
+          <div className="rounded-2xl border border-border">
+            <div>
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed">
                   <colgroup>
@@ -773,9 +769,9 @@ export default function ReportsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-right">
-                            <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => handleGenerateReport(inv.alertId, "incident")}>
+                            <button className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border border-border rounded-lg hover:bg-accent transition-colors" onClick={() => handleGenerateReport(inv.alertId, "incident")}>
                               <Download className="h-3 w-3" /> Download
-                            </Button>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -833,13 +829,13 @@ export default function ReportsPage() {
                   </div>
                 );
               })()}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Bottom Stat Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="border-l-4 border-l-red-500">
-              <CardContent className="p-5">
+            <div className="rounded-2xl border border-border border-l-4 border-l-red-500">
+              <div className="p-5">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-red-500/10">
                     <AlertTriangle className="h-5 w-5 text-red-500" />
@@ -852,10 +848,10 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-blue-500">
-              <CardContent className="p-5">
+              </div>
+            </div>
+            <div className="rounded-2xl border border-border border-l-4 border-l-blue-500">
+              <div className="p-5">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-blue-500/10">
                     <BarChart3 className="h-5 w-5 text-blue-500" />
@@ -868,10 +864,10 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-emerald-500">
-              <CardContent className="p-5">
+              </div>
+            </div>
+            <div className="rounded-2xl border border-border border-l-4 border-l-emerald-500">
+              <div className="p-5">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-emerald-500/10">
                     <CheckCircle className="h-5 w-5 text-emerald-500" />
@@ -884,8 +880,8 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </TabsContent>
 
@@ -915,9 +911,9 @@ export default function ReportsPage() {
                   ...(d?.sigmaTacticDistribution ?? []).map((t) => ({ value: t.tactic, label: t.tactic })),
                 ]} />
               </div>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => refresh()}>
+              <button className="inline-flex items-center px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors" onClick={() => refresh()}>
                 <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
-              </Button>
+              </button>
             </div>
           </div>
 
@@ -931,8 +927,8 @@ export default function ReportsPage() {
             const tpRate = 92.4;
             return (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-5">
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Alerts</span>
                       <AlertTriangle className="h-4 w-4 text-muted-foreground" />
@@ -944,10 +940,10 @@ export default function ReportsPage() {
                     <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                       <div className="h-full rounded-full bg-blue-500" style={{ width: "65%" }} />
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-5">
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Coverage Score</span>
                       <CheckCircle className="h-4 w-4 text-muted-foreground" />
@@ -959,10 +955,10 @@ export default function ReportsPage() {
                     <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                       <div className="h-full rounded-full bg-emerald-500" style={{ width: `${coverageScore}%` }} />
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-5">
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">True Positive Rate</span>
                       <CheckCircle className="h-4 w-4 text-muted-foreground" />
@@ -974,10 +970,10 @@ export default function ReportsPage() {
                     <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                       <div className="h-full rounded-full bg-blue-500" style={{ width: `${tpRate}%` }} />
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-5">
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Rules</span>
                       <FileText className="h-4 w-4 text-muted-foreground" />
@@ -989,8 +985,8 @@ export default function ReportsPage() {
                     <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                       <div className="h-full rounded-full bg-blue-500" style={{ width: "80%" }} />
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
             );
           })()}
@@ -998,17 +994,17 @@ export default function ReportsPage() {
           {/* Main content: Top 10 Rules (left) + Severity Donut + Tactic bars (right) */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* Top 10 Firing Rules — left 3/5 */}
-            <Card className="lg:col-span-3 flex flex-col">
-              <CardHeader className="pb-2">
+            <div className="lg:col-span-3 flex flex-col rounded-2xl border border-border">
+              <div className="p-5 pb-2">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <h4 className="flex items-center gap-2 text-base font-semibold">
                     <BarChart3 className="h-4 w-4 text-blue-500" />
                     Top 10 Firing Rules
-                  </CardTitle>
+                  </h4>
                   <button className="text-sm text-blue-400 hover:text-blue-300 transition-colors">View All</button>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-2 flex-1 flex flex-col justify-between">
+              </div>
+              <div className="px-5 pb-5 pt-2 flex-1 flex flex-col justify-between">
                 {(d?.sigmaTopRules ?? []).map((rule, i) => {
                   const maxCount = (d?.sigmaTopRules ?? [])[0]?.count ?? 1;
                   const pct = Math.round((rule.count / maxCount) * 100);
@@ -1024,20 +1020,20 @@ export default function ReportsPage() {
                     </div>
                   );
                 })}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Right column: Severity Donut + MITRE Tactic bars */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               {/* Severity Distribution — Donut */}
-              <Card className="flex-1 flex flex-col">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <div className="flex-1 flex flex-col rounded-2xl border border-border">
+                <div className="p-5 pb-2">
+                  <h4 className="flex items-center gap-2 text-base font-semibold">
                     <Shield className="h-4 w-4 text-blue-500" />
                     Severity Distribution
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col">
+                  </h4>
+                </div>
+                <div className="px-5 pb-5 flex-1 flex flex-col">
                   <div className="flex-1 min-h-[200px] relative">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -1083,18 +1079,18 @@ export default function ReportsPage() {
                       );
                     })}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Rules by MITRE Tactic — horizontal bars */}
-              <Card className="flex-1 flex flex-col">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <div className="flex-1 flex flex-col rounded-2xl border border-border">
+                <div className="p-5 pb-2">
+                  <h4 className="flex items-center gap-2 text-base font-semibold">
                     <Settings className="h-4 w-4 text-blue-500" />
                     Rules by MITRE Tactic
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-2 flex-1 flex flex-col justify-between">
+                  </h4>
+                </div>
+                <div className="px-5 pb-5 pt-2 flex-1 flex flex-col justify-between">
                   <div className="flex-1 flex flex-col justify-between">
                     {(sigmaTactic !== "all"
                       ? (d?.sigmaTacticDistribution ?? []).filter((t) => t.tactic === sigmaTactic)
@@ -1113,14 +1109,14 @@ export default function ReportsPage() {
                       );
                     })}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Export section */}
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => {
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl hover:bg-accent transition-colors" onClick={() => {
               const allRules = d?.sigmaTopRules ?? [];
               const allTactics = d?.sigmaTacticDistribution ?? [];
               const allSev = d?.sigmaSeverityDistribution ?? [];
@@ -1134,7 +1130,7 @@ export default function ReportsPage() {
               );
             }}>
               <Download className="mr-1.5 h-3.5 w-3.5" /> Download Full CSV
-            </Button>
+            </button>
           </div>
         </TabsContent>
 
@@ -1152,10 +1148,10 @@ export default function ReportsPage() {
               <p className="text-sm text-muted-foreground mt-0.5">Model Performance & Feature Drift Analysis | v2.4.0-stable</p>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl hover:bg-accent transition-colors">
                 <Calendar className="mr-1.5 h-4 w-4" /> Last 24 Hours
-              </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => {
+              </button>
+              <button className="inline-flex items-center px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors" onClick={() => {
                 const ml = d?.mlModelHealth;
                 const tp = d?.tpFpRatio ?? [];
                 const scores = d?.hunterScoreDistribution ?? [];
@@ -1174,7 +1170,7 @@ export default function ReportsPage() {
                 );
               }}>
                 <Download className="mr-1.5 h-4 w-4" /> Export Report
-              </Button>
+              </button>
             </div>
           </div>
 
@@ -1195,8 +1191,8 @@ export default function ReportsPage() {
             return (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* KL Divergence */}
-                <Card>
-                  <CardContent className="p-5">
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">KL Divergence</span>
                       <Info className="h-4 w-4 text-muted-foreground" />
@@ -1211,11 +1207,11 @@ export default function ReportsPage() {
                       </div>
                       <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: klColor }}>{klStatus}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
                 {/* PSI Max */}
-                <Card>
-                  <CardContent className="p-5">
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">PSI Max</span>
                       <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -1230,11 +1226,11 @@ export default function ReportsPage() {
                       </div>
                       <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: psiColor }}>{psiStatus}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
                 {/* Drift Status */}
-                <Card>
-                  <CardContent className="p-5">
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Drift Status</span>
                       <CheckCircle className={cn("h-4 w-4", isDrifting ? "text-red-500" : "text-emerald-500")} />
@@ -1245,11 +1241,11 @@ export default function ReportsPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2 uppercase tracking-wider">Stable since: 14 days ago</p>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
                 {/* Model Health */}
-                <Card>
-                  <CardContent className="p-5">
+                <div className="rounded-2xl border border-border">
+                  <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Model Health</span>
                       <Cpu className="h-4 w-4 text-muted-foreground" />
@@ -1259,8 +1255,8 @@ export default function ReportsPage() {
                       <span className="text-xs text-muted-foreground">{healthPct}%</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2 uppercase tracking-wider">Uptime: {uptimeDays}d {uptimeH}h 12m</p>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
             );
           })()}
@@ -1268,16 +1264,16 @@ export default function ReportsPage() {
           {/* TP/FP Ratio (left) + Hunter Score Distribution (right) */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* TP / FP Ratio — Donut */}
-            <Card className="lg:col-span-2 flex flex-col">
-              <CardHeader className="pb-2">
+            <div className="lg:col-span-2 flex flex-col rounded-2xl border border-border">
+              <div className="p-5 pb-2">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     TP / FP Ratio
-                  </CardTitle>
+                  </h4>
                   <Settings className="h-4 w-4 text-muted-foreground" />
                 </div>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
+              </div>
+              <div className="px-5 pb-5 flex-1 flex flex-col">
                 {(() => {
                   const tp = (d?.tpFpRatio ?? []).find((t) => t.verdict === "true_positive")?.count ?? 0;
                   const fp = (d?.tpFpRatio ?? []).find((t) => t.verdict === "false_positive")?.count ?? 0;
@@ -1331,16 +1327,16 @@ export default function ReportsPage() {
                     </>
                   );
                 })()}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Hunter Score Distribution — Histogram */}
-            <Card className="lg:col-span-3 flex flex-col">
-              <CardHeader className="pb-2">
+            <div className="lg:col-span-3 flex flex-col rounded-2xl border border-border">
+              <div className="p-5 pb-2">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Hunter Score Distribution
-                  </CardTitle>
+                  </h4>
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5">
                       <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -1352,8 +1348,8 @@ export default function ReportsPage() {
                     </div>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="flex-1">
+              </div>
+              <div className="px-5 pb-5 flex-1">
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={d?.hunterScoreDistribution ?? []} barCategoryGap="15%">
@@ -1381,18 +1377,18 @@ export default function ReportsPage() {
                   <span>0.5</span>
                   <span>1.0 (High Confidence)</span>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           {/* Model Feature Performance Analysis */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="rounded-2xl border border-border">
+            <div className="p-5 pb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Model Feature Performance Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
+              </h4>
+            </div>
+            <div className="px-5 pb-5 pt-0">
               <table className="w-full">
                 <colgroup>
                   <col style={{ width: "25%" }} />
@@ -1436,17 +1432,17 @@ export default function ReportsPage() {
                           <span className="text-sm font-medium text-foreground">{f.driftPsi.toFixed(3)}</span>
                         </td>
                         <td className="py-3.5 text-right">
-                          <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wider border", statusColor)}>
+                          <span className={cn("inline-flex items-center rounded-lg border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", statusColor)}>
                             {f.status}
-                          </Badge>
+                          </span>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* ═══════════════ EVIDENCE CHAIN TAB ═══════════════ */}
@@ -1458,29 +1454,29 @@ export default function ReportsPage() {
               <p className="text-sm text-muted-foreground mt-0.5">Blockchain-backed evidence anchoring and Merkle verification metrics</p>
             </div>
             <div className="flex items-center gap-3">
-              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/10">
+              <span className="inline-flex items-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 px-2.5 py-1 text-xs font-semibold">
                 <CheckCircle className="mr-1.5 h-3 w-3" /> System Operational
-              </Badge>
+              </span>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
+                <input
                   placeholder="Search batches..."
-                  className="h-8 w-48 pl-8 text-xs"
+                  className="h-8 w-48 pl-8 text-xs rounded-xl border border-border bg-white font-semibold placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={evSearch}
                   onChange={(e) => { setEvSearch(e.target.value); setEvPage(1); }}
                 />
               </div>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => refresh()}>
+              <button className="inline-flex items-center px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors" onClick={() => refresh()}>
                 <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* 4 Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Batches Anchored */}
-            <Card>
-              <CardContent className="p-5">
+            <div className="rounded-2xl border border-border">
+              <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Batches Anchored</span>
                   <Link2 className="h-4 w-4 text-muted-foreground" />
@@ -1492,11 +1488,11 @@ export default function ReportsPage() {
                 <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                   <div className="h-full rounded-full bg-blue-500" style={{ width: "75%" }} />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
             {/* Merkle Verification */}
-            <Card>
-              <CardContent className="p-5">
+            <div className="rounded-2xl border border-border">
+              <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Merkle Verification</span>
                   <Shield className="h-4 w-4 text-muted-foreground" />
@@ -1508,11 +1504,11 @@ export default function ReportsPage() {
                 <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Number(evVerificationRate)}%` }} />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
             {/* Chain Continuity */}
-            <Card>
-              <CardContent className="p-5">
+            <div className="rounded-2xl border border-border">
+              <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Chain Continuity</span>
                   <Activity className="h-4 w-4 text-muted-foreground" />
@@ -1530,11 +1526,11 @@ export default function ReportsPage() {
                 <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: evContinuityGaps === 0 ? "100%" : `${((evBatches.length - evContinuityGaps) / evBatches.length * 100)}%` }} />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
             {/* Avg Events/Batch */}
-            <Card>
-              <CardContent className="p-5">
+            <div className="rounded-2xl border border-border">
+              <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Avg Events / Batch</span>
                   <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -1546,17 +1542,17 @@ export default function ReportsPage() {
                 <div className="mt-3 h-1.5 rounded-full bg-muted/30 overflow-hidden">
                   <div className="h-full rounded-full bg-blue-500" style={{ width: "68%" }} />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           {/* Evidence Batch Timeline */}
-          <Card>
-            <CardHeader className="pb-2">
+          <div className="rounded-2xl border border-border">
+            <div className="p-5 pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Evidence Batch Timeline
-                </CardTitle>
+                </h4>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5">
                     <div className="h-2.5 w-2.5 rounded-sm bg-blue-600" />
@@ -1572,8 +1568,8 @@ export default function ReportsPage() {
                   </div>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
+            </div>
+            <div className="px-5 pb-5">
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
@@ -1606,16 +1602,16 @@ export default function ReportsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Anchoring History & Verification Log */}
-          <Card>
-            <CardHeader className="pb-3">
+          <div className="rounded-2xl border border-border">
+            <div className="p-5 pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Anchoring History & Verification Log
-                </CardTitle>
+                </h4>
                 <div className="flex items-center gap-2">
                   <FilterSelect label="Status" value={evStatus} onChange={(v) => { setEvStatus(v); setEvPage(1); }} options={[
                     { value: "all", label: "All Statuses" },
@@ -1630,14 +1626,14 @@ export default function ReportsPage() {
                     { value: "no", label: "Continuity Gaps" },
                   ]} />
                   {(evStatus !== "all" || evContinuityFilter !== "all") && (
-                    <Button variant="ghost" size="sm" onClick={() => { setEvStatus("all"); setEvContinuityFilter("all"); setEvPage(1); }}>
+                    <button className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors" onClick={() => { setEvStatus("all"); setEvContinuityFilter("all"); setEvPage(1); }}>
                       <X className="mr-1 h-3 w-3" /> Clear
-                    </Button>
+                    </button>
                   )}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="pt-0">
+            </div>
+            <div className="px-5 pb-5 pt-0">
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed">
                   <colgroup>
@@ -1686,9 +1682,9 @@ export default function ReportsPage() {
                             )}
                           </td>
                           <td className="py-3 text-right">
-                            <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wider border", statusColor)}>
+                            <span className={cn("inline-flex items-center rounded-lg border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", statusColor)}>
                               {b.status}
-                            </Badge>
+                            </span>
                           </td>
                         </tr>
                       );
@@ -1705,37 +1701,38 @@ export default function ReportsPage() {
                       Showing {(evPage - 1) * EV_PAGE_SIZE + 1} to {Math.min(evPage * EV_PAGE_SIZE, filteredEvBatches.length)} of {filteredEvBatches.length} batches
                     </span>
                     <div className="flex items-center gap-1">
-                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={evPage === 1} onClick={() => setEvPage(evPage - 1)}>
+                      <button className="h-7 w-7 p-0 inline-flex items-center justify-center text-xs font-semibold border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-30 disabled:cursor-not-allowed" disabled={evPage === 1} onClick={() => setEvPage(evPage - 1)}>
                         <ChevronLeft className="h-3.5 w-3.5" />
-                      </Button>
+                      </button>
                       {Array.from({ length: totalPages }, (_, i) => (
-                        <Button key={i} variant={evPage === i + 1 ? "default" : "outline"} size="sm" className="h-7 w-7 p-0 text-xs" onClick={() => setEvPage(i + 1)}>
+                        <button key={i} className={cn("h-7 w-7 p-0 inline-flex items-center justify-center text-xs font-semibold rounded-lg transition-colors", evPage === i + 1 ? "bg-blue-600 text-white" : "border border-border hover:bg-accent")} onClick={() => setEvPage(i + 1)}>
                           {i + 1}
-                        </Button>
+                        </button>
                       ))}
-                      <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={evPage === totalPages} onClick={() => setEvPage(evPage + 1)}>
+                      <button className="h-7 w-7 p-0 inline-flex items-center justify-center text-xs font-semibold border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-30 disabled:cursor-not-allowed" disabled={evPage === totalPages} onClick={() => setEvPage(evPage + 1)}>
                         <ChevronRight className="h-3.5 w-3.5" />
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 ) : null;
               })()}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Export footer */}
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => {
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl hover:bg-accent transition-colors" onClick={() => {
               downloadCSV("evidence_chain_report.csv",
                 ["Batch ID", "Merkle Root", "Anchored At", "Event Count", "Status", "Continuity"],
                 filteredEvBatches.map((b) => [b.batchId, b.merkleRoot, b.anchoredAt, String(b.eventCount), b.status, b.hasContinuity ? "Yes" : "No"])
               );
             }}>
               <Download className="mr-1.5 h-3.5 w-3.5" /> Download Full CSV
-            </Button>
+            </button>
           </div>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }
@@ -1756,8 +1753,8 @@ function StatCard({
   subtitle?: string;
 }) {
   return (
-    <Card>
-      <CardContent className="p-4">
+    <div className="rounded-2xl border border-border">
+      <div className="p-4">
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">{label}</span>
           {change && (
@@ -1771,8 +1768,8 @@ function StatCard({
           {value}
         </p>
         {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

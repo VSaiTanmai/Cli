@@ -5,6 +5,7 @@ import { ThemeProvider, DynamicToaster } from "@/components/theme-provider";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { ChatWidget } from "@/components/chat-widget";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -36,6 +37,7 @@ export default function RootLayout({
               </ErrorBoundary>
             </main>
           </div>
+          <ChatWidget />
           <DynamicToaster />
         </ThemeProvider>
       </body>

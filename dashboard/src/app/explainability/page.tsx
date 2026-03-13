@@ -29,29 +29,16 @@ import {
   BarChart3,
   TrendingUp,
   Zap,
-  Brain,
   Crosshair,
   Search as SearchIcon,
   ShieldCheck,
-  ChevronRight,
-  CheckCircle,
   FileSearch,
-  Activity,
-  AlertTriangle,
-  Play,
   Loader2,
   Shield,
-  Clock,
   Cpu,
-  GitMerge,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { usePolling } from "@/hooks/use-polling";
 import { cn } from "@/lib/utils";
 import type { Investigation } from "@/lib/types";
@@ -246,555 +233,492 @@ export default function ExplainabilityPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ══ HEADER ══ */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Fingerprint className="h-5 w-5 text-primary" />
-            XAI Explainability Center
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Global model explanations, feature analysis, and fairness monitoring
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={refresh}>
-          <RefreshCw className="mr-1 h-3 w-3" /> Refresh
-        </Button>
-      </div>
-
-      {/* ══ PIPELINE XAI INTEGRATION BANNER ══ */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                <Brain className="h-5 w-5 text-primary" />
+    <div className="-m-6 -mt-4 bg-white">
+      {/* ═══ STATS HERO ═══ */}
+      <div className="bg-white border-b border-border">
+        <div className="px-10 py-12 max-w-[1600px] w-full mx-auto">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-primary/10 text-primary text-[11px] font-black uppercase tracking-tighter rounded flex items-center gap-1.5">
+                  <Fingerprint className="w-3 h-3" /> AI Transparency
+                </span>
+                <span className="text-muted-foreground text-sm font-medium">3-Agent Pipeline</span>
               </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">3-Agent XAI Pipeline</p>
-                <p className="text-xs text-muted-foreground">
-                  Each agent contributes unique explainability signals to the final verdict
-                </p>
-              </div>
+              <h1 className="text-4xl lg:text-5xl font-extrabold text-foreground tracking-tight leading-[1.1]">
+                XAI <span className="text-primary inline-block">Explainability</span>
+              </h1>
+              <p className="text-sm text-muted-foreground max-w-xl">Global model explanations, SHAP feature analysis, cohort performance, and fairness monitoring across the full agent pipeline.</p>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant="outline" className="text-2xs gap-1">
-                <Crosshair className="h-2.5 w-2.5 text-amber-400" /> Triage: TreeSHAP
-              </Badge>
-              <Badge variant="outline" className="text-2xs gap-1">
-                <SearchIcon className="h-2.5 w-2.5 text-primary" /> Hunter: Module correlation
-              </Badge>
-              <Badge variant="outline" className="text-2xs gap-1">
-                <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" /> Verifier: Calibrated conf.
-              </Badge>
+            <div className="flex gap-3 shrink-0">
+              <button onClick={refresh} className="flex items-center gap-2 px-5 py-2.5 bg-muted/50 border border-border rounded-2xl text-sm font-semibold hover:bg-accent transition-colors">
+                <RefreshCw className="w-4 h-4" /> Refresh
+              </button>
               <Link href="/ai-agents">
-                <Button variant="ghost" size="sm" className="text-xs">Agents <ChevronRight className="ml-1 h-3 w-3" /></Button>
+                <button className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+                  <Cpu className="w-4 h-4" /> View Agents
+                </button>
               </Link>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* ══ MODEL HEALTH & DRIFT STRIP ══ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">PSI Drift Score</p>
-                <p className="mt-1 text-2xl font-bold text-foreground">0.0312</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">PSI Drift Score</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-foreground">0.031</h3>
+                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black rounded uppercase">No Drift</span>
               </div>
-              <Activity className="h-4 w-4 text-emerald-400" />
             </div>
-            <Badge variant="success" className="mt-2 text-2xs">No Drift Detected</Badge>
-          </CardContent>
-        </Card>
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Model Freshness</p>
-                <p className="mt-1 text-2xl font-bold text-foreground">14 <span className="text-sm text-muted-foreground">days</span></p>
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Model Freshness</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-foreground">14<span className="text-lg font-bold text-muted-foreground ml-1">days</span></h3>
+                <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-tighter">Feb 20</span>
               </div>
-              <Clock className="h-4 w-4 text-amber-400" />
             </div>
-            <p className="text-2xs text-muted-foreground mt-2">Last retrained Feb 20</p>
-          </CardContent>
-        </Card>
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">ARF Confidence</p>
-                <p className="mt-1 text-2xl font-bold text-foreground">0.94</p>
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">ARF Confidence</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-4xl font-extrabold text-foreground">0.94</h3>
+                <span className="text-emerald-500 text-xs font-bold flex items-center gap-0.5"><TrendingUp className="w-3 h-3" /> ADWIN</span>
               </div>
-              <TrendingUp className="h-4 w-4 text-primary" />
             </div>
-            <p className="text-2xs text-muted-foreground mt-2">Online learning ramp (ADWIN)</p>
-          </CardContent>
-        </Card>
-        <Card className="stat-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">SHAP Explainer</p>
-                <p className="mt-1 text-2xl font-bold text-foreground">TreeSHAP</p>
-              </div>
-              <Fingerprint className="h-4 w-4 text-primary" />
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">SHAP Explainer</p>
+              <h3 className="text-3xl font-extrabold text-foreground">TreeSHAP</h3>
+              <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-tighter">v1.3.0 · ONNX Runtime</span>
             </div>
-            <p className="text-2xs text-muted-foreground mt-2">v1.3.0 · ONNX Runtime</p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
-      {/* ══ RADAR CHART + FEATURE INTERACTIONS ══ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Radar */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Shield className="h-4 w-4 text-primary" />
-              Agent XAI Capability Comparison
-            </CardTitle>
-            <CardDescription>Side-by-side explainability dimensions across all 3 agents</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-72">
+      {/* ═══ 12-COL GRID ═══ */}
+      <div className="grid grid-cols-12">
+        {/* LEFT COLUMN */}
+        <div className="col-span-12 xl:col-span-8 flex flex-col">
+
+          {/* Agent XAI Radar */}
+          <section className="px-10 py-12 bg-white border-t border-border">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Agent XAI Capability Radar</h3>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Side-by-side explainability dimensions</p>
+                </div>
+              </div>
+              <div className="flex gap-5">
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span className="text-[10px] font-black text-muted-foreground uppercase">Triage</span></div>
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-cyan-500" /><span className="text-[10px] font-black text-muted-foreground uppercase">Hunter</span></div>
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-[10px] font-black text-muted-foreground uppercase">Verifier</span></div>
+              </div>
+            </div>
+            <div className="h-[380px] bg-white rounded-[2.5rem] border border-border p-8 shadow-sm">
               <ResponsiveContainer>
                 <RadarChart data={RADAR_DATA}>
                   <PolarGrid stroke="hsl(var(--border))" />
-                  <PolarAngleAxis
-                    dataKey="metric"
-                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <PolarRadiusAxis
-                    angle={30}
-                    domain={[0, 100]}
-                    tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <RechartsTooltip
-                    contentStyle={{
-                      background: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Radar name="Triage" dataKey="triage" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} strokeWidth={2} />
-                  <Radar name="Hunter" dataKey="hunter" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.1} strokeWidth={2} />
-                  <Radar name="Verifier" dataKey="verifier" stroke="#10b981" fill="#10b981" fillOpacity={0.1} strokeWidth={2} />
+                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))", fontWeight: 600 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} />
+                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, fontSize: 12, fontWeight: 600, padding: "12px 16px" }} />
+                  <Radar name="Triage" dataKey="triage" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} strokeWidth={2.5} />
+                  <Radar name="Hunter" dataKey="hunter" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.12} strokeWidth={2} />
+                  <Radar name="Verifier" dataKey="verifier" stroke="#10b981" fill="#10b981" fillOpacity={0.12} strokeWidth={2} />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex justify-center gap-6 mt-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-amber-500" /> Triage</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-cyan-500" /> Hunter</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-emerald-500" /> Verifier</span>
-            </div>
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* Feature Interactions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Layers className="h-4 w-4 text-primary" />
-              Feature Interaction Strengths
-            </CardTitle>
-            <CardDescription>
-              SHAP interaction values showing how feature pairs jointly influence predictions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-52">
+          {/* Feature Interaction Strengths */}
+          <section className="px-10 py-12 bg-white border-t border-border">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-foreground">Feature Interaction Strengths</h3>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">SHAP interaction values — joint feature influence</p>
+              </div>
+            </div>
+            <div className="h-[260px] bg-white rounded-[2.5rem] border border-border p-8 shadow-sm">
               <ResponsiveContainer>
                 <BarChart data={xai.featureInteractions} layout="vertical" margin={{ left: 160 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="pair" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} width={155} />
-                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="interaction" fill="rgba(139,92,246,0.6)" radius={[0, 4, 4, 0]} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontWeight: 600 }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="pair" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))", fontWeight: 600 }} axisLine={false} tickLine={false} width={155} />
+                  <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, fontSize: 12 }} />
+                  <Bar dataKey="interaction" fill="rgba(139,92,246,0.6)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </section>
 
-      {/* ══ PER-AGENT XAI CARDS ══ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="border-amber-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-500/10">
-                <Crosshair className="h-3.5 w-3.5 text-amber-400" />
+          {/* Live Event Explainer */}
+          <section className="px-10 py-12 bg-white border-t border-border">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-amber-50 text-amber-500 rounded-2xl">
+                <Zap className="w-5 h-5" />
               </div>
-              Triage Agent XAI
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Explainer</span><span className="font-mono text-foreground">TreeSHAP (ONNX)</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">Features</span><span className="text-foreground">20 features per prediction</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">Top SHAP Feature</span><Badge variant="outline" className="text-2xs font-mono">event_frequency (0.342)</Badge></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">SHAP Stability</span><span className="text-foreground">88% across 1k samples</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">Fast-path</span><span className="text-foreground">LightGBM &gt;0.85 → bypass ensemble</span></div>
-          </CardContent>
-        </Card>
-        <Card className="border-cyan-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-500/10">
-                <SearchIcon className="h-3.5 w-3.5 text-primary" />
-              </div>
-              Hunter Agent XAI
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">L1 Score Visibility</span><span className="text-foreground">Sigma, SPC, Graph, Temporal, LanceDB</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">Meta-model</span><span className="font-mono text-foreground">CatBoost (SHAP-compatible)</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">L1 Module Weights</span><span className="text-foreground">Sigma 35%, Graph 25%</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">&nbsp;</span><span className="text-foreground">Temporal SPC 20%, Vector 20%</span></div>
-          </CardContent>
-        </Card>
-        <Card className="border-emerald-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              </div>
-              Verifier Agent XAI
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Formula</span><span className="text-foreground">40% hunter + 20% evidence + 20% IOC</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">&nbsp;</span><span className="text-foreground">+ 10% FP + 10% timeline</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">TP Threshold</span><span className="text-emerald-400 font-bold">&gt;0.75</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">FP Threshold</span><span className="text-red-400 font-bold">&lt;0.30</span></div>
-            <Separator />
-            <div className="flex justify-between"><span className="text-muted-foreground">Inconclusive</span><span className="text-amber-400">0.30 — 0.75</span></div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ══ LIVE EVENT EXPLAINER ══ */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Zap className="h-4 w-4 text-amber-400" />
-            Live Event Explainer
-          </CardTitle>
-          <CardDescription>Select an event to generate a real-time SHAP explanation via the AI pipeline</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            {SAMPLE_EVENTS.map((ev, i) => (
-              <button
-                key={i}
-                onClick={() => handleExplain(i)}
-                className={cn(
-                  "text-left rounded-lg border p-3 transition-all hover:border-primary/50",
-                  selectedEvent === i ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border"
-                )}
-              >
-                <p className="text-xs font-bold text-foreground mb-2">{ev.label}</p>
-                <div className="grid grid-cols-2 gap-1 text-2xs text-muted-foreground">
-                  <span>event_freq: <span className="text-foreground font-mono">{ev.event_frequency}</span></span>
-                  <span>sigma: <span className="text-foreground font-mono">{ev.sigma_match}</span></span>
-                  <span>user_risk: <span className="text-foreground font-mono">{ev.user_risk}</span></span>
-                  <span>bytes_out: <span className="text-foreground font-mono">{ev.bytes_out}</span></span>
-                  <span>entropy: <span className="text-foreground font-mono">{ev.entropy}</span></span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {explaining && (
-            <div className="flex items-center justify-center gap-2 p-6 text-muted-foreground text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" /> Computing SHAP values…
-            </div>
-          )}
-
-          {explanation && !explaining && (
-            <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Badge
-                    variant={explanation.score > 0.75 ? "destructive" : explanation.score > 0.4 ? "warning" : "success"}
-                    className="text-xs px-3 py-1"
-                  >
-                    {explanation.label}
-                  </Badge>
-                  <span className="text-sm font-mono font-bold text-foreground">
-                    Score: {explanation.score.toFixed(2)}
-                  </span>
-                </div>
-                <Badge variant="outline" className="text-2xs gap-1"><Fingerprint className="h-2.5 w-2.5" /> SHAP</Badge>
-              </div>
-              <div className="space-y-1.5">
-                {explanation.shap.map((s) => {
-                  const pct = (Math.abs(s.value) / 0.4) * 100;
-                  return (
-                    <div key={s.feature} className="flex items-center gap-3">
-                      <span className="w-36 truncate font-mono text-xs text-muted-foreground">{s.feature}</span>
-                      <div className="flex-1 h-3 rounded bg-muted/30 overflow-hidden">
-                        <div
-                          className="h-full rounded transition-all duration-500"
-                          style={{
-                            width: `${Math.min(pct, 100)}%`,
-                            background: s.value >= 0 ? "rgba(239,68,68,0.6)" : "rgba(6,182,212,0.6)",
-                          }}
-                        />
-                      </div>
-                      <Badge
-                        variant={s.value >= 0 ? "destructive" : "cyan"}
-                        className="text-2xs w-14 justify-center"
-                      >
-                        {s.value >= 0 ? "+" : ""}{s.value.toFixed(3)}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-4 text-2xs text-muted-foreground pt-2 border-t border-border/50">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500/60" /> Pushes towards anomalous</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-500/60" /> Pushes towards normal</span>
+              <div>
+                <h3 className="text-2xl font-extrabold text-foreground">Live Event Explainer</h3>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Real-time SHAP explanation via the AI pipeline</p>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ══ PER-INVESTIGATION EXPLANATIONS ══ */}
-      {investigations.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <FileSearch className="h-4 w-4 text-primary" />
-              Per-Investigation Explanations
-            </CardTitle>
-            <CardDescription>Click to view SHAP analysis for each classified investigation</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {investigations.slice(0, 6).map((inv) => (
-                <Link key={inv.id} href={`/investigations/${inv.id}`}>
-                  <div className="flex items-center gap-3 rounded-lg border border-border p-3 hover:border-primary/30 hover:bg-muted/10 transition-colors">
-                    <Badge
-                      variant={inv.severity >= 4 ? "critical" : inv.severity >= 3 ? "high" : "medium"}
-                      className="text-2xs shrink-0"
-                    >
-                      S{inv.severity}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">{inv.title}</p>
-                      <p className="text-2xs text-muted-foreground">{inv.eventCount} events</p>
-                    </div>
-                    <Badge variant="ghost" className="text-2xs gap-1 shrink-0">
-                      <Fingerprint className="h-2.5 w-2.5" /> XAI
-                    </Badge>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {SAMPLE_EVENTS.map((ev, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleExplain(i)}
+                  className={cn(
+                    "text-left rounded-2xl border-2 p-5 transition-all hover:border-primary/50",
+                    selectedEvent === i ? "border-primary bg-primary/5 shadow-md" : "border-border bg-white"
+                  )}
+                >
+                  <p className="text-sm font-bold text-foreground mb-3">{ev.label}</p>
+                  <div className="grid grid-cols-2 gap-1.5 text-[10px] text-muted-foreground">
+                    <span>event_freq: <span className="text-foreground font-mono font-bold">{ev.event_frequency}</span></span>
+                    <span>sigma: <span className="text-foreground font-mono font-bold">{ev.sigma_match}</span></span>
+                    <span>user_risk: <span className="text-foreground font-mono font-bold">{ev.user_risk}</span></span>
+                    <span>bytes_out: <span className="text-foreground font-mono font-bold">{ev.bytes_out}</span></span>
+                    <span>entropy: <span className="text-foreground font-mono font-bold">{ev.entropy}</span></span>
                   </div>
-                </Link>
+                </button>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* ══ TABBED DEEP-DIVE SECTION ══ */}
-      <Tabs value={view} onValueChange={setView}>
-        <TabsList>
-          <TabsTrigger value="features"><BarChart3 className="mr-1 h-3 w-3" /> Feature Importance</TabsTrigger>
-          <TabsTrigger value="boundary"><Eye className="mr-1 h-3 w-3" /> Decision Boundary</TabsTrigger>
-          <TabsTrigger value="cohorts"><Layers className="mr-1 h-3 w-3" /> Cohort Analysis</TabsTrigger>
-          <TabsTrigger value="model-card"><Info className="mr-1 h-3 w-3" /> Model Cards</TabsTrigger>
-        </TabsList>
+            {explaining && (
+              <div className="flex items-center justify-center gap-2 p-8 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" /> Computing SHAP values…
+              </div>
+            )}
 
-        {/* FEATURE IMPORTANCE */}
-        <TabsContent value="features" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Global SHAP Values</CardTitle>
-                <CardDescription>Mean absolute SHAP contribution per feature</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-72">
+            {explanation && !explaining && (
+              <div className="rounded-2xl border border-border bg-white p-6 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className={cn(
+                      "px-3 py-1.5 text-[10px] font-black uppercase rounded-lg",
+                      explanation.score > 0.75 ? "bg-red-50 text-red-600" : explanation.score > 0.4 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                    )}>
+                      {explanation.label}
+                    </span>
+                    <span className="text-lg font-mono font-extrabold text-foreground">
+                      Score: {explanation.score.toFixed(2)}
+                    </span>
+                  </div>
+                  <span className="px-3 py-1 bg-muted/50 text-muted-foreground text-[9px] font-black rounded uppercase flex items-center gap-1">
+                    <Fingerprint className="h-2.5 w-2.5" /> SHAP
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {explanation.shap.map((s) => {
+                    const pct = (Math.abs(s.value) / 0.4) * 100;
+                    return (
+                      <div key={s.feature} className="flex items-center gap-3">
+                        <span className="w-40 truncate font-mono text-xs text-muted-foreground font-bold">{s.feature}</span>
+                        <div className="flex-1 h-3 rounded-full bg-muted/30 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(pct, 100)}%`,
+                              background: s.value >= 0 ? "rgba(239,68,68,0.6)" : "rgba(6,182,212,0.6)",
+                            }}
+                          />
+                        </div>
+                        <span className={cn(
+                          "text-[10px] font-black w-16 text-right",
+                          s.value >= 0 ? "text-red-500" : "text-cyan-500"
+                        )}>
+                          {s.value >= 0 ? "+" : ""}{s.value.toFixed(3)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-6 text-[10px] text-muted-foreground pt-3 border-t border-border/50">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500/60" /> Pushes towards anomalous</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500/60" /> Pushes towards normal</span>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Tabbed Deep-Dive */}
+          <section className="px-10 py-12 bg-white border-t border-border flex-1">
+            <Tabs value={view} onValueChange={setView}>
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                    <Eye className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-2xl font-extrabold text-foreground">Deep Dive Analysis</h3>
+                </div>
+                <TabsList className="bg-muted/30 rounded-full p-1">
+                  <TabsTrigger value="features" className="rounded-full text-xs font-bold px-4"><BarChart3 className="mr-1.5 h-3 w-3" /> Features</TabsTrigger>
+                  <TabsTrigger value="boundary" className="rounded-full text-xs font-bold px-4"><Eye className="mr-1.5 h-3 w-3" /> Boundary</TabsTrigger>
+                  <TabsTrigger value="cohorts" className="rounded-full text-xs font-bold px-4"><Layers className="mr-1.5 h-3 w-3" /> Cohorts</TabsTrigger>
+                  <TabsTrigger value="model-card" className="rounded-full text-xs font-bold px-4"><Info className="mr-1.5 h-3 w-3" /> Models</TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* FEATURE IMPORTANCE */}
+              <TabsContent value="features" className="mt-0">
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-4 px-1">Global SHAP Values</p>
+                    <div className="h-[320px] bg-white rounded-2xl border border-border p-6 shadow-sm">
+                      <ResponsiveContainer>
+                        <BarChart data={xai.globalFeatures} layout="vertical" margin={{ left: 100 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="feature" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontWeight: 600 }} axisLine={false} tickLine={false} width={95} />
+                          <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }} />
+                          <Bar dataKey="importance" radius={[0, 6, 6, 0]}>
+                            {xai.globalFeatures.map((f, i) => (
+                              <Cell key={i} fill={f.importance >= 0 ? "rgba(6,182,212,0.7)" : "rgba(239,68,68,0.7)"} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-4 px-1">Feature Detail — All 10 Features</p>
+                    <div className="bg-white rounded-2xl border border-border p-6 shadow-sm space-y-3">
+                      {xai.globalFeatures.map((f) => {
+                        const pct = (Math.abs(f.importance) / 0.4) * 100;
+                        return (
+                          <div key={f.feature} className="flex items-center gap-3">
+                            <span className="w-36 truncate font-mono text-[11px] text-muted-foreground font-bold">{f.feature}</span>
+                            <div className="flex-1 h-2.5 rounded-full bg-muted/30 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(pct, 100)}%`,
+                                  background: f.importance >= 0 ? "rgba(6,182,212,0.5)" : "rgba(239,68,68,0.5)",
+                                }}
+                              />
+                            </div>
+                            <span className={cn("text-[10px] font-black w-14 text-right", f.importance >= 0 ? "text-cyan-600" : "text-red-500")}>
+                              {f.importance >= 0 ? "+" : ""}{f.importance.toFixed(3)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* DECISION BOUNDARY */}
+              <TabsContent value="boundary" className="mt-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-4 px-1">2D Projection — Top-2 Features</p>
+                <div className="h-[360px] bg-white rounded-2xl border border-border p-6 shadow-sm">
                   <ResponsiveContainer>
-                    <BarChart data={xai.globalFeatures} layout="vertical" margin={{ left: 100 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                      <YAxis type="category" dataKey="feature" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} width={95} />
-                      <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                      <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
-                        {xai.globalFeatures.map((f, i) => (
-                          <Cell key={i} fill={f.importance >= 0 ? "rgba(6,182,212,0.7)" : "rgba(239,68,68,0.7)"} />
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" dataKey="x" name="Feature 1" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} />
+                      <YAxis type="number" dataKey="y" name="Feature 2" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} />
+                      <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12 }} />
+                      <Scatter data={xai.decisionBoundary}>
+                        {(xai.decisionBoundary || []).map((p, i) => (
+                          <Cell key={i} fill={p.label === 1 ? "rgba(239,68,68,0.6)" : "rgba(6,182,212,0.6)"} />
                         ))}
-                      </Bar>
-                    </BarChart>
+                      </Scatter>
+                    </ScatterChart>
                   </ResponsiveContainer>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Feature Detail List */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Feature Detail</CardTitle>
-                <CardDescription>All 10 features with SHAP contributions</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-72">
-                  <div className="space-y-2">
-                    {xai.globalFeatures.map((f) => {
-                      const pct = (Math.abs(f.importance) / 0.4) * 100;
-                      return (
-                        <div key={f.feature} className="flex items-center gap-3">
-                          <span className="w-36 truncate font-mono text-xs text-muted-foreground">{f.feature}</span>
-                          <div className="flex-1 h-3 rounded bg-muted/30 overflow-hidden">
-                            <div
-                              className="h-full rounded transition-all duration-500"
-                              style={{
-                                width: `${Math.min(pct, 100)}%`,
-                                background: f.importance >= 0 ? "rgba(6,182,212,0.5)" : "rgba(239,68,68,0.5)",
-                              }}
-                            />
-                          </div>
-                          <Badge variant={f.importance >= 0 ? "cyan" : "destructive"} className="text-2xs w-14 justify-center">
-                            {f.importance >= 0 ? "+" : ""}{f.importance.toFixed(3)}
-                          </Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* DECISION BOUNDARY */}
-        <TabsContent value="boundary" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Decision Boundary Visualization</CardTitle>
-              <CardDescription>2D projection of top-2 features with classification regions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-72">
-                <ResponsiveContainer>
-                  <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis type="number" dataKey="x" name="Feature 1" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} />
-                    <YAxis type="number" dataKey="y" name="Feature 2" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} />
-                    <RechartsTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                    <Scatter data={xai.decisionBoundary}>
-                      {(xai.decisionBoundary || []).map((p, i) => (
-                        <Cell key={i} fill={p.label === 1 ? "rgba(239,68,68,0.6)" : "rgba(6,182,212,0.6)"} />
-                      ))}
-                    </Scatter>
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 flex gap-4 justify-center text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500/60" /> Attack / Anomalous</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500/60" /> Normal / Benign</span>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* COHORT ANALYSIS */}
-        <TabsContent value="cohorts" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {(xai.cohortAnalysis || []).map((c) => (
-              <Card key={c.cohort}>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-foreground">{c.cohort}</h4>
-                    <Badge variant="ghost" className="text-2xs">{c.count.toLocaleString()} events</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-2xs text-muted-foreground">Accuracy</p>
-                      <p className="text-lg font-bold text-foreground">{(c.accuracy * 100).toFixed(1)}%</p>
-                    </div>
-                    <div>
-                      <p className="text-2xs text-muted-foreground">F1 Score</p>
-                      <p className="text-lg font-bold text-foreground">{c.f1.toFixed(3)}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-2xs text-muted-foreground">Top Feature</p>
-                    <Badge variant="outline" className="mt-0.5 text-2xs font-mono">{c.topFeature}</Badge>
-                  </div>
-                  <div className="h-2 rounded bg-muted/30 overflow-hidden">
-                    <div className="h-full rounded bg-primary/50 transition-all" style={{ width: `${c.accuracy * 100}%` }} />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <Card className="border-amber-500/20 bg-amber-500/5">
-            <CardContent className="p-4">
-              <p className="text-xs text-foreground font-medium">
-                <strong>Insight:</strong> Auth Events show the strongest performance (F1: 0.950). File Events are weakest (F1: 0.860) due to entropy noise from encrypted payloads.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* MODEL CARDS */}
-        <TabsContent value="model-card" className="space-y-4 mt-4">
-          {(xai.modelCards || MOCK_DATA.modelCards!).map((mc) => (
-            <Card key={mc.model}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm">{mc.model}</CardTitle>
-                    <CardDescription>Version {mc.version} · Trained {mc.trainDate}</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm"><Download className="mr-1 h-3 w-3" /> Export Card</Button>
+                <div className="mt-4 flex gap-6 justify-center text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500/60" /> Attack / Anomalous</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500/60" /> Normal / Benign</span>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-                  {Object.entries(mc.metrics).map(([k, v]) => (
-                    <div key={k}>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider">{k}</p>
-                      <p className={cn("mt-1 text-2xl font-bold", v >= 0.9 ? "text-emerald-400" : v >= 0.7 ? "text-amber-400" : "text-destructive")}>{v.toFixed(3)}</p>
+              </TabsContent>
+
+              {/* COHORT ANALYSIS */}
+              <TabsContent value="cohorts" className="mt-0">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {(xai.cohortAnalysis || []).map((c) => (
+                    <div key={c.cohort} className="bg-white rounded-2xl border border-border p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-base font-extrabold text-foreground">{c.cohort}</h4>
+                        <span className="text-[9px] font-black text-muted-foreground uppercase bg-muted/50 px-2.5 py-1 rounded">{c.count.toLocaleString()} events</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Accuracy</p>
+                          <p className="text-2xl font-extrabold text-foreground">{(c.accuracy * 100).toFixed(1)}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">F1 Score</p>
+                          <p className="text-2xl font-extrabold text-foreground">{c.f1.toFixed(3)}</p>
+                        </div>
+                      </div>
+                      <div className="mb-3">
+                        <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Top Feature</p>
+                        <span className="px-3 py-1 bg-muted/40 rounded-lg text-[10px] font-mono font-bold text-foreground">{c.topFeature}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+                        <div className="h-full rounded-full bg-primary/50" style={{ width: `${c.accuracy * 100}%` }} />
+                      </div>
                     </div>
                   ))}
                 </div>
-                <div className="mt-6">
-                  <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Fairness Metrics</h4>
-                  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                    {Object.entries(mc.fairness).map(([k, v]) => (
-                      <div key={k}>
-                        <p className="text-xs text-muted-foreground">{k.replace(/([A-Z])/g, " $1").trim()}</p>
-                        <p className="mt-1 text-lg font-semibold text-foreground">{v.toFixed(3)}</p>
-                        <Badge variant={v >= 0.9 ? "success" : v >= 0.8 ? "warning" : "destructive"} className="mt-0.5 text-2xs">
-                          {v >= 0.9 ? "Fair" : v >= 0.8 ? "Review" : "Bias Risk"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-200 p-5">
+                  <p className="text-xs text-amber-800">
+                    <strong>Insight:</strong> Auth Events show the strongest performance (F1: 0.950). File Events are weakest (F1: 0.860) due to entropy noise from encrypted payloads.
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-      </Tabs>
+              </TabsContent>
+
+              {/* MODEL CARDS */}
+              <TabsContent value="model-card" className="mt-0 space-y-4">
+                {(xai.modelCards || MOCK_DATA.modelCards!).map((mc) => (
+                  <div key={mc.model} className="bg-white rounded-2xl border border-border p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h4 className="text-base font-extrabold text-foreground">{mc.model}</h4>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Version {mc.version} · Trained {mc.trainDate}</p>
+                      </div>
+                      <button className="flex items-center gap-2 px-4 py-2 bg-muted/50 border border-border rounded-xl text-xs font-semibold hover:bg-accent transition-colors">
+                        <Download className="w-3 h-3" /> Export
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                      {Object.entries(mc.metrics).map(([k, v]) => (
+                        <div key={k}>
+                          <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">{k}</p>
+                          <p className="text-xl font-extrabold text-foreground">{(v as number).toFixed(3)}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="pt-4 border-t border-border">
+                      <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-3">Fairness Metrics</p>
+                      <div className="flex gap-6">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Equalized Odds:</span>
+                          <span className="text-sm font-extrabold text-foreground">{mc.fairness.equalizedOdds.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Demographic Parity:</span>
+                          <span className="text-sm font-extrabold text-foreground">{mc.fairness.demographicParity.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </TabsContent>
+            </Tabs>
+          </section>
+
+        </div>
+
+        {/* RIGHT SIDEBAR */}
+        <aside className="col-span-12 xl:col-span-4 bg-white border-l border-border/80 p-8 space-y-10">
+
+          {/* Triage Agent XAI */}
+          <section>
+            <div className="flex items-center gap-3 mb-5 px-2">
+              <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+                <Crosshair className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Triage Agent XAI</h3>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-border shadow-sm space-y-3.5">
+              {[
+                { label: "Explainer", value: "TreeSHAP (ONNX)" },
+                { label: "Features", value: "20 per prediction" },
+                { label: "Top SHAP", value: "event_frequency (0.342)" },
+                { label: "Stability", value: "88% across 1k samples" },
+                { label: "Fast-path", value: "LightGBM >0.85 → bypass" },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{row.label}</span>
+                  <span className="text-xs font-bold text-foreground text-right">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Hunter Agent XAI */}
+          <section>
+            <div className="flex items-center gap-3 mb-5 px-2">
+              <div className="w-10 h-10 bg-cyan-50 text-cyan-600 rounded-xl flex items-center justify-center">
+                <SearchIcon className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Hunter Agent XAI</h3>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-border shadow-sm space-y-3.5">
+              {[
+                { label: "L1 Modules", value: "Sigma, SPC, Graph, Temporal, LanceDB" },
+                { label: "Meta-model", value: "CatBoost (SHAP)" },
+                { label: "Sigma Weight", value: "35%" },
+                { label: "Graph Weight", value: "25%" },
+                { label: "Temporal/Vector", value: "20% each" },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{row.label}</span>
+                  <span className="text-xs font-bold text-foreground text-right">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Verifier Agent XAI */}
+          <section>
+            <div className="flex items-center gap-3 mb-5 px-2">
+              <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-extrabold text-foreground">Verifier Agent XAI</h3>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-border shadow-sm space-y-3.5">
+              {[
+                { label: "Formula", value: "40% hunter + 20% evidence" },
+                { label: "", value: "+ 20% IOC + 10% FP + 10% timeline" },
+                { label: "TP Threshold", value: "> 0.75", color: "text-emerald-500" },
+                { label: "FP Threshold", value: "< 0.30", color: "text-red-500" },
+                { label: "Inconclusive", value: "0.30 — 0.75", color: "text-amber-500" },
+              ].map((row, i) => (
+                <div key={i} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{row.label}</span>
+                  <span className={cn("text-xs font-bold text-right", row.color || "text-foreground")}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Per-Investigation Explanations */}
+          {investigations.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-5 px-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                    <FileSearch className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-lg font-extrabold text-foreground">Investigation XAI</h3>
+                </div>
+                <Link href="/investigations" className="text-[10px] font-black text-primary uppercase tracking-[0.15em] hover:underline">All</Link>
+              </div>
+              <div className="space-y-3">
+                {investigations.slice(0, 4).map((inv) => (
+                  <Link key={inv.id} href={`/investigations/${inv.id}`}>
+                    <div className="bg-white rounded-2xl p-4 border border-border shadow-sm hover:border-primary/30 transition-all flex items-center gap-3">
+                      <span className={cn("px-2.5 py-1 text-[9px] font-black uppercase rounded shrink-0", inv.severity >= 4 ? "bg-red-50 text-red-600" : inv.severity >= 3 ? "bg-orange-50 text-orange-600" : "bg-amber-50 text-amber-600")}>S{inv.severity}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{inv.title}</p>
+                        <p className="text-[10px] text-muted-foreground">{inv.eventCount} events</p>
+                      </div>
+                      <span className="px-2 py-0.5 bg-muted/40 text-[9px] font-black text-muted-foreground uppercase rounded shrink-0">XAI</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
+        </aside>
+      </div>
     </div>
   );
 }
