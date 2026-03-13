@@ -93,7 +93,7 @@ export default function SearchPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <SearchIcon className="h-5 w-5 text-nexus-cyan" />
+            <SearchIcon className="h-5 w-5 text-primary" />
             Search
           </h2>
           <p className="text-sm text-muted-foreground">
@@ -157,7 +157,7 @@ export default function SearchPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
-                <Bookmark className="h-4 w-4 text-nexus-purple" />
+                <Bookmark className="h-4 w-4 text-primary" />
                 Saved Searches
               </CardTitle>
             </CardHeader>
@@ -257,7 +257,7 @@ export default function SearchPage() {
                             ? new Date(event.timestamp).toLocaleString()
                             : "—"}
                         </span>
-                        <span className="text-xs text-nexus-cyan shrink-0">
+                        <span className="text-xs text-primary shrink-0">
                           {event.log_source || "—"}
                         </span>
                         <span className="flex-1 truncate font-mono text-xs text-foreground/80">

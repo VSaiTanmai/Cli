@@ -99,7 +99,7 @@ export default function InvestigationsPage() {
         </div>
         <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-center">
           <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">In Progress</p>
-          <p className="text-xl font-bold text-nexus-cyan">{inProgressCount}</p>
+          <p className="text-xl font-bold text-primary">{inProgressCount}</p>
         </div>
         <div className="rounded-lg border border-border bg-card/50 p-3 text-center">
           <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Total Events</p>
@@ -204,8 +204,8 @@ export default function InvestigationsPage() {
                         {isClosed || !isOpen ? <CheckCircle className="h-2 w-2 text-emerald-400" /> : <Loader2 className="h-2 w-2 text-amber-400 animate-spin" />}
                       </div>
                       <div className={cn("flex items-center gap-0.5 rounded-md border px-1.5 py-1", isClosed || !isOpen ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5")}>
-                        <SearchIcon className="h-2.5 w-2.5 text-nexus-cyan" />
-                        {isClosed || !isOpen ? <CheckCircle className="h-2 w-2 text-emerald-400" /> : <Loader2 className="h-2 w-2 text-nexus-cyan animate-spin" />}
+                        <SearchIcon className="h-2.5 w-2.5 text-primary" />
+                        {isClosed || !isOpen ? <CheckCircle className="h-2 w-2 text-emerald-400" /> : <Loader2 className="h-2 w-2 text-primary animate-spin" />}
                       </div>
                       <div className={cn("flex items-center gap-0.5 rounded-md border px-1.5 py-1", isClosed ? "border-emerald-500/30 bg-emerald-500/5" : isOpen ? "border-muted-foreground/20 bg-muted/10" : "border-emerald-500/30 bg-emerald-500/5")}>
                         <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" />

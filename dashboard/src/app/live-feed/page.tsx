@@ -119,7 +119,7 @@ export default function LiveFeedPage() {
           <span className="text-xs text-muted-foreground">
             {connected ? "Connected" : "Disconnected"}
           </span>
-          <Zap className="h-3 w-3 text-nexus-cyan" />
+          <Zap className="h-3 w-3 text-primary" />
           <span className="text-2xs font-mono text-muted-foreground">
             {events.length}/{MAX_EVENTS}
           </span>
@@ -216,7 +216,7 @@ export default function LiveFeedPage() {
                     >
                       {severityLabel(event.severity || 0)}
                     </Badge>
-                    <span className="shrink-0 text-nexus-cyan w-[100px] truncate">
+                    <span className="shrink-0 text-primary w-[100px] truncate">
                       {event.log_source || "unknown"}
                     </span>
                     <span className="shrink-0 text-muted-foreground w-[100px] truncate">

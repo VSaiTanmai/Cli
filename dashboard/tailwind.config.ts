@@ -13,6 +13,13 @@ const config: Config = {
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        "primary": "#2463eb",
+        "primary-dark": "#1d4ed8",
+        "secondary": "#1e293b",
+        "background-light": "#f8fafc",
+        "background-dark": "#0f172a",
+        "muted-blue": "#475569",
+        "border-light": "#e2e8f0",
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
@@ -20,14 +27,6 @@ const config: Config = {
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
-        },
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -60,13 +59,17 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
+        lg: "0.375rem",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        "full": "9999px",
+        "xl": "0.5rem",
+        "DEFAULT": "0.25rem"
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        mono: ["ui-monospace", "Cascadia Code", "Fira Code", "monospace"],
+        mono: ["JetBrains Mono", "ui-monospace", "Cascadia Code", "Fira Code", "monospace"],
+        "display": ["Inter", "sans-serif"]
       },
       fontSize: {
         "2xs": ["0.625rem", { lineHeight: "0.875rem" }],

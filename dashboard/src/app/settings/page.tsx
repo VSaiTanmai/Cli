@@ -532,7 +532,7 @@ export default function SettingsPage() {
 
                 <div className="rounded-lg border border-cyan-500/20 p-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <SearchIcon className="h-3.5 w-3.5 text-nexus-cyan" />
+                    <SearchIcon className="h-3.5 w-3.5 text-primary" />
                     <span className="text-xs font-medium text-foreground">Hunter Agent</span>
                   </div>
                   <div>
